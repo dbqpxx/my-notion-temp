@@ -1,0 +1,869 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notion File Manager - Glassmorphism Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        :root {
+            --primary: #6e8efb;
+            --secondary: #a777e3;
+            --bg-gradient: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+            --text-color: #ffffff;
+            --sidebar-width: 280px;
+            --folder-red: #ff5f56;
+            --folder-orange: #ffbd2e;
+            --folder-green: #27c93f;
+            --folder-blue: #4da3ff;
+            --folder-purple: #b388ff;
+            --folder-pink: #ff80ab;
+            --folder-cyan: #80deea;
+            --folder-gray: #b0bec5;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            font-family: 'Inter', sans-serif;
+            background: var(--bg-gradient);
+            background-attachment: fixed;
+            height: 100vh;
+            overflow: hidden;
+            display: flex;
+            color: var(--text-color);
+        }
+
+        /* --- Glassmorphism UI Components --- */
+        .glass-panel {
+            background: var(--glass-bg);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid var(--glass-border);
+            box-shadow: var(--glass-shadow);
+        }
+
+        .glass-card {
+            background: rgba(255, 255, 255, 0.05);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            transition: all 0.3s ease;
+        }
+
+        .glass-card:hover {
+            background: rgba(255, 255, 255, 0.1);
+            transform: translateY(-2px);
+        }
+
+        /* --- Sidebar --- */
+        #sidebar {
+            width: var(--sidebar-width);
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            z-index: 100;
+        }
+
+        .logo {
+            font-size: 1.2rem;
+            font-weight: 600;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .nav-section {
+            margin-bottom: 20px;
+        }
+
+        .nav-title {
+            font-size: 0.7rem;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            opacity: 0.6;
+            margin-bottom: 15px;
+        }
+
+        .tree-item {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 8px 12px;
+            border-radius: 8px;
+            cursor: pointer;
+            transition: background 0.2s;
+            font-size: 0.9rem;
+        }
+
+        .tree-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .tree-item.active {
+            background: var(--primary);
+            box-shadow: 0 4px 15px rgba(110, 142, 251, 0.4);
+        }
+
+        /* --- Main Content --- */
+        #main-content {
+            flex: 1;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 30px;
+        }
+
+        .search-bar {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 20px;
+            padding: 8px 20px;
+            width: 300px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .search-bar input {
+            background: none;
+            border: none;
+            color: white;
+            outline: none;
+            width: 100%;
+        }
+
+        .search-bar input::placeholder {
+            color: rgba(255, 255, 255, 0.5);
+        }
+
+        .toolbar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .btn {
+            padding: 8px 16px;
+            border-radius: 8px;
+            border: 1px solid var(--glass-border);
+            background: var(--glass-bg);
+            color: white;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.85rem;
+            transition: all 0.2s;
+        }
+
+        .btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        .btn.primary {
+            background: var(--primary);
+            border: none;
+        }
+
+        /* --- Breadcrumbs --- */
+        .breadcrumbs {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            font-size: 0.9rem;
+            opacity: 0.8;
+            margin-bottom: 20px;
+        }
+
+        .breadcrumbs span {
+            cursor: pointer;
+        }
+
+        .breadcrumbs span:hover {
+            text-decoration: underline;
+        }
+
+        /* --- Grid/List View --- */
+        .items-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 20px;
+        }
+
+        .items-container.list-view {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .item-card {
+            padding: 20px;
+            text-align: center;
+            cursor: pointer;
+            position: relative;
+        }
+
+        .item-card i.fa-folder {
+            font-size: 3rem;
+            margin-bottom: 10px;
+            display: block;
+        }
+
+        .item-card i.fa-file-lines, .item-card i.fa-file-image {
+            font-size: 2.5rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+
+        .item-card .item-name {
+            font-size: 0.9rem;
+            font-weight: 500;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .item-card .item-info {
+            font-size: 0.7rem;
+            opacity: 0.5;
+            margin-top: 5px;
+        }
+
+        /* List View Styles */
+        .list-view .item-card {
+            display: grid;
+            grid-template-columns: 40px 1fr 100px 150px 80px;
+            align-items: center;
+            text-align: left;
+            padding: 12px 20px;
+        }
+
+        .list-view .item-card i {
+            font-size: 1.2rem !important;
+            margin: 0 !important;
+        }
+
+        /* --- Journal Editor Modal --- */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .modal-content {
+            width: 90%;
+            max-width: 800px;
+            height: 80vh;
+            border-radius: 20px;
+            padding: 40px;
+            display: flex;
+            flex-direction: column;
+            position: relative;
+        }
+
+        .editor-header {
+            margin-bottom: 20px;
+        }
+
+        .editor-title {
+            font-size: 1.8rem;
+            font-weight: 600;
+            background: none;
+            border: none;
+            color: white;
+            width: 100%;
+            outline: none;
+        }
+
+        #editor-body {
+            flex: 1;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 12px;
+            padding: 20px;
+            outline: none;
+            overflow-y: auto;
+            font-family: 'Inter', sans-serif;
+            line-height: 1.6;
+        }
+
+        .editor-toolbar {
+            display: flex;
+            gap: 15px;
+            margin-bottom: 10px;
+            opacity: 0.7;
+        }
+
+        .editor-toolbar button {
+            background: none;
+            border: none;
+            color: white;
+            cursor: pointer;
+        }
+
+        /* --- Context Menu --- */
+        #context-menu {
+            position: fixed;
+            display: none;
+            background: rgba(25, 25, 25, 0.8);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 8px;
+            padding: 5px 0;
+            z-index: 2000;
+            min-width: 150px;
+            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+        }
+
+        .menu-item {
+            padding: 8px 15px;
+            font-size: 0.85rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .menu-item:hover {
+            background: var(--primary);
+        }
+
+        .color-dots {
+            display: flex;
+            gap: 5px;
+            padding: 8px 15px;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            cursor: pointer;
+        }
+
+        /* --- Upload / Toast --- */
+        #drop-zone {
+            display: none;
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            right: 20px;
+            bottom: 20px;
+            border: 3px dashed var(--primary);
+            border-radius: 30px;
+            z-index: 3000;
+            background: rgba(110, 142, 251, 0.1);
+            justify-content: center;
+            align-items: center;
+            backdrop-filter: blur(5px);
+        }
+
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: #27c93f;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 10px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            display: none;
+            animation: slideIn 0.3s ease-out;
+            z-index: 4000;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); }
+            to { transform: translateX(0); }
+        }
+
+        /* --- Responsive --- */
+        @media (max-width: 768px) {
+            #sidebar { display: none; }
+            .search-bar { width: 100%; }
+        }
+    </style>
+</head>
+<body oncontextmenu="return false;">
+
+    <!-- Sidebar -->
+    <div id="sidebar" class="glass-panel">
+        <div class="logo">
+            <i class="fas fa-cube"></i>
+            <span>NFM Dashboard</span>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-title">快速存取</div>
+            <div class="tree-item active" onclick="app.navigateTo('root')">
+                <i class="fas fa-home"></i> 根目錄
+            </div>
+            <div class="tree-item" onclick="app.filterBy('journal')">
+                <i class="fas fa-book"></i> 我的共作日誌
+            </div>
+            <div class="tree-item" onclick="app.filterBy('recent')">
+                <i class="fas fa-clock"></i> 最近更新
+            </div>
+        </div>
+
+        <div class="nav-section">
+            <div class="nav-title">資料夾層次</div>
+            <div id="folder-tree">
+                <!-- 由 JS 動態生成 -->
+            </div>
+        </div>
+
+        <div class="nav-section" style="margin-top: auto;">
+            <div class="tree-item" onclick="app.toggleTheme()">
+                <i class="fas fa-moon"></i> 深色模式
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Content -->
+    <div id="main-content">
+        <header>
+            <div class="search-bar">
+                <i class="fas fa-search"></i>
+                <input type="text" id="global-search" placeholder="搜尋檔案、日誌或標籤..." oninput="app.search(this.value)">
+            </div>
+            <div class="user-profile">
+                <!-- Notion style user widget placeholder -->
+                <div style="width: 35px; height: 35px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-user-circle"></i>
+                </div>
+            </div>
+        </header>
+
+        <div class="breadcrumbs" id="breadcrumbs">
+            <span onclick="app.navigateTo('root')">首頁 / </span>
+        </div>
+
+        <div class="toolbar">
+            <button class="btn primary" onclick="app.createItem('folder')">
+                <i class="fas fa-folder-plus"></i> 新增資料夾
+            </button>
+            <button class="btn" onclick="app.createItem('journal')">
+                <i class="fas fa-pen-nib"></i> 建立日誌
+            </button>
+            <button class="btn" onclick="document.getElementById('file-input').click()">
+                <i class="fas fa-cloud-upload-alt"></i> 上傳檔案
+            </button>
+            <input type="file" id="file-input" style="display:none" multiple onchange="app.handleFileUpload(this.files)">
+            
+            <div style="margin-left: auto; display: flex; gap: 10px;">
+                <button class="btn" onclick="app.setViewMode('grid')">
+                    <i class="fas fa-th"></i>
+                </button>
+                <button class="btn" onclick="app.setViewMode('list')">
+                    <i class="fas fa-list"></i>
+                </button>
+            </div>
+        </div>
+
+        <div id="items-grid" class="items-container">
+            <!-- 檔案項目動態載入 -->
+        </div>
+    </div>
+
+    <!-- Journal Modal -->
+    <div id="journal-modal" class="modal">
+        <div class="modal-content glass-panel">
+            <div class="editor-header">
+                <input type="text" id="editor-title" class="editor-title" placeholder="無標題">
+                <div style="font-size: 0.8rem; opacity: 0.5; margin-top: 5px;" id="editor-meta">建立於 2026/02/18</div>
+            </div>
+            <div class="editor-toolbar">
+                <button onclick="document.execCommand('bold')"><i class="fas fa-bold"></i></button>
+                <button onclick="document.execCommand('italic')"><i class="fas fa-italic"></i></button>
+                <button onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
+                <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))"><i class="fas fa-link"></i></button>
+                <span style="flex:1"></span>
+                <button onclick="app.closeEditor()"><i class="fas fa-times"></i> 關閉並儲存</button>
+            </div>
+            <div id="editor-body" contenteditable="true" placeholder="開始輸入您的日誌..."></div>
+        </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="context-menu">
+        <div class="menu-item" onclick="app.renameItem()"><i class="fas fa-edit"></i> 重新命名</div>
+        <div class="menu-item" onclick="app.duplicateItem()"><i class="fas fa-copy"></i> 建立副本</div>
+        <div class="menu-item" onclick="app.shareItem()"><i class="fas fa-share-alt"></i> 分享連結</div>
+        <div class="menu-item" style="color: #ff5f56;" onclick="app.deleteItem()"><i class="fas fa-trash"></i> 刪除項目</div>
+        <div class="color-dots" id="folder-colors">
+            <div class="dot" style="background: var(--folder-red);" onclick="app.setItemColor('red')"></div>
+            <div class="dot" style="background: var(--folder-orange);" onclick="app.setItemColor('orange')"></div>
+            <div class="dot" style="background: var(--folder-green);" onclick="app.setItemColor('green')"></div>
+            <div class="dot" style="background: var(--folder-blue);" onclick="app.setItemColor('blue')"></div>
+            <div class="dot" style="background: var(--folder-purple);" onclick="app.setItemColor('purple')"></div>
+            <div class="dot" style="background: var(--folder-cyan);" onclick="app.setItemColor('cyan')"></div>
+        </div>
+    </div>
+
+    <!-- Drop Zone -->
+    <div id="drop-zone">
+        <div style="text-align: center;">
+            <i class="fas fa-cloud-upload-alt" style="font-size: 5rem; margin-bottom: 20px;"></i>
+            <h2>放開以開始上傳</h2>
+        </div>
+    </div>
+
+    <!-- Toast -->
+    <div id="toast" class="toast">操作成功</div>
+
+    <script>
+        /**
+         * Notion File Manager - Dashboard Engine
+         * Powered by LocalStorage
+         */
+        const app = {
+            state: {
+                items: [],
+                currentFolder: 'root',
+                viewMode: 'grid',
+                editingId: null,
+                contextId: null,
+                searchQuery: ''
+            },
+
+            init() {
+                this.loadData();
+                this.render();
+                this.setupEventListeners();
+                console.log('NFM Dashboard Initialized');
+            },
+
+            loadData() {
+                const savedItems = localStorage.getItem('nfm_items');
+                if (savedItems) {
+                    this.state.items = JSON.parse(savedItems);
+                } else {
+                    // Default items for first run
+                    this.state.items = [
+                        { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
+                        { id: '1', name: '專案說明', type: 'journal', parentId: 'root', content: '歡迎使用 Notion 檔案管理器！', createdAt: new Date() }
+                    ];
+                    this.saveData();
+                }
+            },
+
+            saveData() {
+                localStorage.setItem('nfm_items', JSON.stringify(this.state.items));
+            },
+
+            render() {
+                this.renderBreadcrumbs();
+                this.renderItems();
+                this.renderFolderTree();
+            },
+
+            renderItems() {
+                const grid = document.getElementById('items-grid');
+                grid.className = `items-container ${this.state.viewMode}-view`;
+                grid.innerHTML = '';
+
+                let filteredItems = this.state.items.filter(item => {
+                    // Exclude root and filter by current folder
+                    if (item.id === 'root') return false;
+                    
+                    const matchesFolder = item.parentId === this.state.currentFolder;
+                    const matchesSearch = item.name.toLowerCase().includes(this.state.searchQuery.toLowerCase());
+                    
+                    return matchesFolder && matchesSearch;
+                });
+
+                if (filteredItems.length === 0) {
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; opacity: 0.4; padding: 50px;">此資料夾目前是空的</div>`;
+                    return;
+                }
+
+                filteredItems.forEach(item => {
+                    const card = document.createElement('div');
+                    card.className = 'item-card glass-card';
+                    card.oncontextmenu = (e) => this.showContextMenu(e, item.id);
+                    card.onclick = () => this.handleItemClick(item);
+
+                    let icon = 'fa-file-lines';
+                    let colorStyle = '';
+                    
+                    if (item.type === 'folder') {
+                        icon = 'fa-folder';
+                        colorStyle = `color: var(--folder-${item.color || 'blue'})`;
+                    } else if (item.type === 'journal') {
+                        icon = 'fa-book';
+                        colorStyle = 'color: #ffbd2e';
+                    }
+
+                    if (this.state.viewMode === 'grid') {
+                        card.innerHTML = `
+                            <i class="fas ${icon}" style="${colorStyle}"></i>
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-info">${new Date(item.createdAt).toLocaleDateString()}</div>
+                        `;
+                    } else {
+                        card.innerHTML = `
+                            <i class="fas ${icon}" style="${colorStyle}"></i>
+                            <div class="item-name">${item.name}</div>
+                            <div class="item-info">${item.type}</div>
+                            <div class="item-info">${new Date(item.createdAt).toLocaleString()}</div>
+                            <div class="item-info">${item.fileSize ? (item.fileSize / 1024).toFixed(1) + ' KB' : '-'}</div>
+                        `;
+                    }
+
+                    grid.appendChild(card);
+                });
+            },
+
+            renderBreadcrumbs() {
+                const container = document.getElementById('breadcrumbs');
+                container.innerHTML = '';
+                
+                let path = [];
+                let curr = this.state.items.find(i => i.id === this.state.currentFolder);
+                
+                while (curr) {
+                    path.unshift(curr);
+                    curr = this.state.items.find(i => i.id === curr.parentId);
+                }
+
+                path.forEach((p, idx) => {
+                    const span = document.createElement('span');
+                    span.innerText = p.id === 'root' ? '🏠 首頁' : p.name;
+                    span.onclick = () => this.navigateTo(p.id);
+                    container.appendChild(span);
+                    if (idx < path.length - 1) {
+                        const sep = document.createTextNode(' / ');
+                        container.appendChild(sep);
+                    }
+                });
+            },
+
+            renderFolderTree() {
+                const container = document.getElementById('folder-tree');
+                container.innerHTML = '';
+                
+                const folders = this.state.items.filter(i => i.type === 'folder' && i.id !== 'root');
+                folders.forEach(f => {
+                    const div = document.createElement('div');
+                    div.className = `tree-item ${this.state.currentFolder === f.id ? 'active' : ''}`;
+                    div.innerHTML = `<i class="fas fa-folder" style="color: var(--folder-${f.color})"></i> ${f.name}`;
+                    div.onclick = () => this.navigateTo(f.id);
+                    container.appendChild(div);
+                });
+            },
+
+            // --- Handlers ---
+            navigateTo(folderId) {
+                this.state.currentFolder = folderId;
+                this.state.searchQuery = '';
+                document.getElementById('global-search').value = '';
+                this.render();
+            },
+
+            handleItemClick(item) {
+                if (item.type === 'folder') {
+                    this.navigateTo(item.id);
+                } else if (item.type === 'journal') {
+                    this.openEditor(item.id);
+                } else {
+                    this.showToast('預覽檔案中... (Base64 功能演示)');
+                }
+            },
+
+            setViewMode(mode) {
+                this.state.viewMode = mode;
+                this.render();
+            },
+
+            createItem(type) {
+                const name = prompt(`輸入${type === 'folder' ? '資料夾' : '日誌'}名稱:`, `新${type === 'folder' ? '資料夾' : '日誌'}`);
+                if (!name) return;
+
+                const newItem = {
+                    id: 'nfm_' + Date.now(),
+                    name: name,
+                    type: type,
+                    parentId: this.state.currentFolder,
+                    color: 'blue',
+                    content: '',
+                    createdAt: new Date(),
+                    updatedAt: new Date()
+                };
+
+                this.state.items.push(newItem);
+                this.saveData();
+                this.render();
+                this.showToast('已建立');
+            },
+
+            handleFileUpload(files) {
+                Array.from(files).forEach(file => {
+                    const reader = new FileReader();
+                    reader.onload = (e) => {
+                        this.state.items.push({
+                            id: 'file_' + Date.now() + Math.random(),
+                            name: file.name,
+                            type: 'file',
+                            parentId: this.state.currentFolder,
+                            fileData: e.target.result,
+                            fileSize: file.size,
+                            fileType: file.type,
+                            createdAt: new Date()
+                        });
+                        this.saveData();
+                        this.render();
+                    };
+                    reader.readAsDataURL(file);
+                });
+                this.showToast(`成功上傳 ${files.length} 個檔案`);
+            },
+
+            // --- Editor ---
+            openEditor(id) {
+                const item = this.state.items.find(i => i.id === id);
+                this.state.editingId = id;
+                document.getElementById('editor-title').value = item.name;
+                document.getElementById('editor-body').innerHTML = item.content || '';
+                document.getElementById('editor-meta').innerText = `最後更新: ${new Date(item.updatedAt || item.createdAt).toLocaleString()}`;
+                
+                document.getElementById('journal-modal').style.display = 'flex';
+            },
+
+            closeEditor() {
+                const id = this.state.editingId;
+                const item = this.state.items.find(i => i.id === id);
+                
+                item.name = document.getElementById('editor-title').value || '無標題';
+                item.content = document.getElementById('editor-body').innerHTML;
+                item.updatedAt = new Date();
+                
+                this.saveData();
+                this.state.editingId = null;
+                document.getElementById('journal-modal').style.display = 'none';
+                this.render();
+                this.showToast('已自動儲存');
+            },
+
+            // --- Context Menu Actions ---
+            showContextMenu(e, id) {
+                e.preventDefault();
+                this.state.contextId = id;
+                const menu = document.getElementById('context-menu');
+                menu.style.display = 'block';
+                menu.style.left = e.pageX + 'px';
+                menu.style.top = e.pageY + 'px';
+
+                // Only show color picker for folders
+                const item = this.state.items.find(i => i.id === id);
+                document.getElementById('folder-colors').style.display = item.type === 'folder' ? 'flex' : 'none';
+            },
+
+            hideContextMenu() {
+                document.getElementById('context-menu').style.display = 'none';
+            },
+
+            deleteItem() {
+                if (confirm('確定要刪除此項目嗎？')) {
+                    this.state.items = this.state.items.filter(i => i.id !== this.state.contextId);
+                    this.saveData();
+                    this.render();
+                    this.showToast('已刪除');
+                }
+                this.hideContextMenu();
+            },
+
+            renameItem() {
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                const newName = prompt('請輸入新名稱:', item.name);
+                if (newName) {
+                    item.name = newName;
+                    this.saveData();
+                    this.render();
+                }
+                this.hideContextMenu();
+            },
+
+            setItemColor(color) {
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                item.color = color;
+                this.saveData();
+                this.render();
+                this.hideContextMenu();
+            },
+
+            shareItem() {
+                const url = window.location.href + '#share=' + this.state.contextId;
+                navigator.clipboard.writeText(url);
+                this.showToast('分享連結已複製到剪貼簿');
+                this.hideContextMenu();
+            },
+
+            search(val) {
+                this.state.searchQuery = val;
+                this.render();
+            },
+
+            setupEventListeners() {
+                document.addEventListener('click', () => this.hideContextMenu());
+                
+                // Drag and Drop
+                const main = document.getElementById('main-content');
+                const dropZone = document.getElementById('drop-zone');
+
+                window.addEventListener('dragover', (e) => {
+                    e.preventDefault();
+                    dropZone.style.display = 'flex';
+                });
+
+                dropZone.addEventListener('dragleave', () => {
+                    dropZone.style.display = 'none';
+                });
+
+                dropZone.addEventListener('drop', (e) => {
+                    e.preventDefault();
+                    dropZone.style.display = 'none';
+                    this.handleFileUpload(e.dataTransfer.files);
+                });
+            },
+
+            showToast(msg) {
+                const t = document.getElementById('toast');
+                t.innerText = msg;
+                t.style.display = 'block';
+                setTimeout(() => t.style.display = 'none', 3000);
+            }
+        };
+
+        app.init();
+    </script>
+</body>
+</html>
