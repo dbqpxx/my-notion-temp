@@ -995,10 +995,73 @@
             }
 
             async saveItems(items) {
-                // Full sync logic goes here (Updating pages, deleting, creating)
-                console.log('Notion Sync triggered', items);
-                // Due to Notion's API, this requires batch processing.
+                // To avoid sending the whole array to Notion (which is just a DB), 
+                // we will rely on individual API create/update calls for Notion instead 
+                // of bulk saving a JSON file. 
                 return true;
+            }
+
+            async createItem(item) {
+                try {
+                    const isJournal = item.type === 'journal';
+                    const dbEndpoint = isJournal ? '/pages/journal_db' : '/pages/file_db';
+
+                    // Prepare Notion properties based on our Guide
+                    const properties = {
+                        "名稱": {
+                            "title": [
+                                { "text": { "content": item.name } }
+                            ]
+                        }
+                    };
+
+                    if (!isJournal) {
+                        properties["類型"] = {
+                            "select": { "name": item.type === 'folder' ? '📁 資料夾' : '📄 檔案' }
+                        };
+                        // We map parentId to a relation or simple text for now if relation isn't set up perfectly yet
+                        // For simplicity in Phase 1, we skip Relation property update to avoid strict constraint errors
+                    }
+
+                    if (item.tags && item.tags.length > 0) {
+                        properties["標籤"] = {
+                            "multi_select": item.tags.map(t => ({ name: t }))
+                        };
+                    }
+
+                    const response = await this.notionRequest(dbEndpoint, 'POST', {
+                        properties: properties
+                    });
+
+                    // Update ID with actual Notion ID
+                    if (response && response.id) {
+                        item.id = response.id;
+                    }
+                    return item;
+                } catch (e) {
+                    console.error("Notion createItem error", e);
+                    throw e;
+                }
+            }
+
+            async updateItem(item) {
+                try {
+                    if (item.id === 'root' || item.id.startsWith('nfm_')) return; // Skip local/temp items
+
+                    const properties = {
+                        "名稱": { "title": [{ "text": { "content": item.name } }] }
+                    };
+
+                    if (item.tags) {
+                        properties["標籤"] = { "multi_select": item.tags.map(t => ({ name: t })) };
+                    }
+
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                        properties: properties
+                    });
+                } catch (e) {
+                    console.error("Notion updateItem error", e);
+                }
             }
 
             async uploadFile(fileItem) {
@@ -1446,7 +1509,7 @@
                 }
             },
 
-            createItem(type) {
+            async createItem(type) {
                 const name = prompt(`輸入${type === 'folder' ? '資料夾' : '日誌'}名稱:`, `新${type === 'folder' ? '資料夾' : '日誌'}`);
                 if (!name) return;
 
@@ -1457,14 +1520,37 @@
                     parentId: this.state.currentFolder,
                     color: 'blue',
                     content: '',
+                    tags: [],
                     createdAt: new Date(),
                     updatedAt: new Date()
                 };
 
+                // Add to UI immediately
                 this.state.items.push(newItem);
-                this.saveData();
                 this.render();
-                this.showToast('已建立');
+
+                try {
+                    // Try to create in Provider (Notion/Dropbox)
+                    if (this.storage.createItem) {
+                        this.showToast('正在同步至雲端...');
+                        const savedItem = await this.storage.createItem(newItem);
+                        // Update ID if backend generated a new one
+                        if (savedItem && savedItem.id !== newItem.id) {
+                            const index = this.state.items.findIndex(i => i.id === newItem.id);
+                            if (index !== -1) {
+                                this.state.items[index] = savedItem;
+                            }
+                        }
+                    }
+                    this.saveData(); // Will handle Dropbox bulk save if needed
+                    this.render();
+                    this.showToast('已建立');
+                } catch (e) {
+                    // Rollback
+                    this.state.items = this.state.items.filter(i => i.id !== newItem.id);
+                    this.render();
+                    this.showToast('建立失敗，請檢查網路或設定');
+                }
             },
 
             handleFileUpload(files) {
@@ -1583,6 +1669,9 @@
                 if (!item.tags.includes(tag)) {
                     item.tags.push(tag);
                     item.updatedAt = new Date();
+                    if (this.storage.updateItem) {
+                        this.storage.updateItem(item);
+                    }
                     this.saveData();
                     this.render();
                 }
@@ -1595,6 +1684,9 @@
                 if (item && item.tags) {
                     item.tags = item.tags.filter(t => t !== tag);
                     item.updatedAt = new Date();
+                    if (this.storage.updateItem) {
+                        this.storage.updateItem(item);
+                    }
                     this.saveData();
                     this.render();
                     this.renderTagsModal(item);
@@ -1661,20 +1753,32 @@
                 this.hideContextMenu();
             },
 
-            renameItem() {
+            async renameItem() {
                 const item = this.state.items.find(i => i.id === this.state.contextId);
                 const newName = prompt('請輸入新名稱:', item.name);
-                if (newName) {
+                if (newName && newName !== item.name) {
                     item.name = newName;
+
+                    if (this.storage.updateItem) {
+                        this.showToast('正在重新命名...');
+                        await this.storage.updateItem(item);
+                    }
+
                     this.saveData();
                     this.render();
+                    this.showToast('已重新命名');
                 }
                 this.hideContextMenu();
             },
 
-            setItemColor(color) {
+            async setItemColor(color) {
                 const item = this.state.items.find(i => i.id === this.state.contextId);
                 item.color = color;
+
+                if (this.storage.updateItem) {
+                    await this.storage.updateItem(item);
+                }
+
                 this.saveData();
                 this.render();
                 this.hideContextMenu();

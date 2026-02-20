@@ -1,7 +1,7 @@
 // netlify/functions/notion.js
 const https = require('https');
 
-exports.handler = async function(event, context) {
+exports.handler = async function (event, context) {
     // Only allow POST requests for this proxy
     if (event.httpMethod !== 'POST') {
         return { statusCode: 405, body: 'Method Not Allowed' };
@@ -29,6 +29,12 @@ exports.handler = async function(event, context) {
             actualEndpoint = `/databases/${fileDbId}/query`;
         } else if (endpoint === '/databases/journal_db/query') {
             actualEndpoint = `/databases/${journalDbId}/query`;
+        } else if (endpoint === '/pages/file_db') {
+            actualEndpoint = `/pages`;
+            payload.parent = { database_id: fileDbId };
+        } else if (endpoint === '/pages/journal_db') {
+            actualEndpoint = `/pages`;
+            payload.parent = { database_id: journalDbId };
         }
 
         const dataString = payload ? JSON.stringify(payload) : '';
