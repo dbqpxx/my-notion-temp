@@ -414,6 +414,55 @@
             }
         }
 
+        /* --- Login Overlay --- */
+        #login-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: var(--bg-gradient);
+            z-index: 9999;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+        }
+
+        .login-box {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(20px);
+            padding: 40px;
+            border-radius: 20px;
+            border: 1px solid var(--glass-border);
+            text-align: center;
+            width: 350px;
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        .login-box h2 {
+            margin-bottom: 20px;
+            font-weight: 500;
+        }
+
+        .login-input {
+            width: 100%;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            background: rgba(0, 0, 0, 0.2);
+            color: white;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 1.2rem;
+            letter-spacing: 5px;
+        }
+
+        .login-input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
         /* --- Responsive --- */
         @media (max-width: 768px) {
             #sidebar {
@@ -562,6 +611,20 @@
     <!-- Toast -->
     <div id="toast" class="toast">操作成功</div>
 
+    <!-- Login Overlay -->
+    <div id="login-overlay">
+        <div class="login-box">
+            <i class="fas fa-lock" style="font-size: 3rem; margin-bottom: 20px; opacity: 0.8;"></i>
+            <h2 id="login-title">App Locked</h2>
+            <input type="password" id="login-input" class="login-input" placeholder="••••" maxlength="8"
+                onkeyup="if(event.key === 'Enter') app.checkLogin()">
+            <button class="btn primary" style="width: 100%; justify-content: center;" onclick="app.checkLogin()">
+                <i class="fas fa-arrow-right"></i> 進入
+            </button>
+            <div id="login-msg" style="margin-top: 15px; font-size: 0.8rem; color: #ff5f56; min-height: 1.2em;"></div>
+        </div>
+    </div>
+
     <!-- Settings Modal -->
     <div id="settings-modal" class="modal">
         <div class="modal-content glass-panel" style="height: auto; max-width: 500px;">
@@ -583,6 +646,14 @@
                     style="margin-top: 10px; font-size: 0.8rem; border: 1px solid #ff5f56; color: #ff5f56; display: none;">
                     <i class="fas fa-unlink"></i> 斷開 Dropbox 連結 (登出)
                 </button>
+                <div
+                    style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <button class="btn"
+                        style="width: 100%; justify-content: center; background: rgba(255,255,255,0.05);"
+                        onclick="app.lockApp()">
+                        <i class="fas fa-lock"></i> 鎖定 App
+                    </button>
+                </div>
             </div>
             <div style="text-align: right;">
                 <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
@@ -772,6 +843,18 @@
             },
 
             async init() {
+                // Check for App Lock
+                if (this.isAppLocked()) {
+                    this.showLoginScreen();
+                    return; // Wait for login
+                }
+
+                await this.startApp();
+            },
+
+            async startApp() {
+                document.getElementById('login-overlay').style.display = 'none';
+
                 // Check URL for auth redirect
                 if (window.location.hash.includes('access_token')) {
                     this.state.providerName = 'dropbox';
@@ -782,6 +865,71 @@
                 await this.switchProvider(this.state.providerName, false);
                 this.setupEventListeners();
                 console.log('NFM Dashboard Initialized');
+            },
+
+            // --- App Lock Logic ---
+            isAppLocked() {
+                // If password exists, assume locked on init
+                return !!localStorage.getItem('nfm_app_password');
+            },
+
+            showLoginScreen() {
+                const overlay = document.getElementById('login-overlay');
+                const title = document.getElementById('login-title');
+                const input = document.getElementById('login-input');
+
+                overlay.style.display = 'flex';
+                input.value = '';
+                input.focus();
+
+                if (!localStorage.getItem('nfm_app_password')) {
+                    // Setup Mode
+                    title.innerText = '設定 App 密碼';
+                    input.placeholder = '設定新密碼';
+                    document.getElementById('login-msg').innerText = '初次使用，請設定一組密碼';
+                } else {
+                    // Login Mode
+                    title.innerText = '輸入密碼解鎖';
+                    input.placeholder = '••••';
+                    document.getElementById('login-msg').innerText = '';
+                }
+            },
+
+            checkLogin() {
+                const input = document.getElementById('login-input');
+                const pwd = input.value;
+                const msg = document.getElementById('login-msg');
+
+                if (!pwd) {
+                    msg.innerText = '請輸入密碼';
+                    return;
+                }
+
+                const savedPwd = localStorage.getItem('nfm_app_password');
+
+                if (!savedPwd) {
+                    // Set new password
+                    localStorage.setItem('nfm_app_password', pwd); // Warning: Plaintext for demo
+                    this.startApp();
+                    this.showToast('密碼已設定');
+                } else {
+                    // Verify
+                    if (pwd === savedPwd) {
+                        this.startApp();
+                    } else {
+                        msg.innerText = '密碼錯誤';
+                        input.value = '';
+                        input.classList.add('shake'); // Optional animation
+                        setTimeout(() => input.classList.remove('shake'), 500);
+                    }
+                }
+            },
+
+            lockApp() {
+                document.getElementById('settings-modal').style.display = 'none';
+                document.getElementById('login-overlay').style.display = 'flex';
+                document.getElementById('login-title').innerText = 'App 已鎖定';
+                document.getElementById('login-input').value = '';
             },
 
             async switchProvider(name, reload = true) {
