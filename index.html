@@ -330,6 +330,39 @@
             border: none;
             color: white;
             cursor: pointer;
+            padding: 4px 6px;
+            border-radius: 4px;
+            transition: background 0.2s;
+        }
+
+        .editor-toolbar button:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        #editor-body blockquote {
+            border-left: 3px solid #61dafb;
+            margin: 8px 0;
+            padding: 6px 16px;
+            background: rgba(97, 218, 251, 0.05);
+            border-radius: 0 8px 8px 0;
+        }
+
+        #editor-body h2 {
+            font-size: 1.4rem;
+            margin: 16px 0 8px 0;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 6px;
+        }
+
+        #editor-body hr {
+            border: none;
+            border-top: 1px solid rgba(255, 255, 255, 0.15);
+            margin: 16px 0;
+        }
+
+        #editor-body ol,
+        #editor-body ul {
+            padding-left: 24px;
         }
 
         /* --- Context Menu --- */
@@ -572,17 +605,53 @@
             <div class="editor-header">
                 <input type="text" id="editor-title" class="editor-title" placeholder="無標題">
                 <div style="font-size: 0.8rem; opacity: 0.5; margin-top: 5px;" id="editor-meta">建立於 2026/02/18</div>
+                <!-- Related files display -->
+                <div id="editor-relations"
+                    style="display:flex; flex-wrap:wrap; gap:6px; margin-top:8px; min-height:22px;">
+                </div>
             </div>
             <div class="editor-toolbar">
-                <button onclick="document.execCommand('bold')"><i class="fas fa-bold"></i></button>
-                <button onclick="document.execCommand('italic')"><i class="fas fa-italic"></i></button>
-                <button onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
-                <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))"><i
+                <button onclick="document.execCommand('bold')" title="粗體"><i class="fas fa-bold"></i></button>
+                <button onclick="document.execCommand('italic')" title="斜體"><i class="fas fa-italic"></i></button>
+                <button onclick="document.execCommand('strikeThrough')" title="刪除線"><i
+                        class="fas fa-strikethrough"></i></button>
+                <span style="border-left:1px solid rgba(255,255,255,0.2); height:18px;"></span>
+                <button onclick="document.execCommand('formatBlock', false, 'h2')" title="標題"><i
+                        class="fas fa-heading"></i></button>
+                <button onclick="document.execCommand('insertUnorderedList')" title="無序列表"><i
+                        class="fas fa-list-ul"></i></button>
+                <button onclick="document.execCommand('insertOrderedList')" title="有序列表"><i
+                        class="fas fa-list-ol"></i></button>
+                <button onclick="document.execCommand('formatBlock', false, 'blockquote')" title="引用"><i
+                        class="fas fa-quote-left"></i></button>
+                <button onclick="document.execCommand('insertHorizontalRule')" title="分隔線"><i
+                        class="fas fa-minus"></i></button>
+                <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))" title="連結"><i
                         class="fas fa-link"></i></button>
+                <span style="border-left:1px solid rgba(255,255,255,0.2); height:18px;"></span>
+                <button onclick="app.showRelationPicker()" title="📎 關聯檔案" style="color:#61dafb;"><i
+                        class="fas fa-paperclip"></i></button>
                 <span style="flex:1"></span>
-                <button onclick="app.closeEditor()"><i class="fas fa-times"></i> 關閉並儲存</button>
+                <button onclick="app.closeEditor()"><i class="fas fa-check"></i> 儲存並關閉</button>
             </div>
             <div id="editor-body" contenteditable="true" placeholder="開始輸入您的日誌..."></div>
+        </div>
+    </div>
+
+    <!-- File Relation Picker Modal -->
+    <div id="relation-picker-modal" class="modal">
+        <div class="modal-content glass-panel" style="height:auto; max-width:500px; max-height:60vh; padding:25px;">
+            <div class="editor-header" style="margin-bottom:15px;">
+                <h3>📎 選擇關聯檔案</h3>
+            </div>
+            <div id="relation-file-list"
+                style="overflow-y:auto; max-height:40vh; display:flex; flex-direction:column; gap:6px;">
+            </div>
+            <div style="display:flex; gap:10px; margin-top:15px; justify-content:flex-end;">
+                <button class="btn"
+                    onclick="document.getElementById('relation-picker-modal').style.display='none'">取消</button>
+                <button class="btn primary" onclick="app.confirmRelationPick()">確認</button>
+            </div>
         </div>
     </div>
 
@@ -1031,6 +1100,14 @@
                         properties["日期"] = {
                             "date": { "start": new Date().toISOString().split('T')[0] }
                         };
+                        // Auto-link to current folder (Method C - auto part)
+                        if (item.parentId && item.parentId !== 'root' && !item.parentId.startsWith('nfm_')) {
+                            properties["關聯檔案"] = {
+                                "relation": [{ "id": item.parentId }]
+                            };
+                            // Store relation IDs on the item for UI
+                            item.relatedFileIds = [item.parentId];
+                        }
                     } else {
                         // File DB uses "名稱" as the title property
                         properties["名稱"] = {
@@ -1074,24 +1151,124 @@
                 }
             }
 
-            // Convert simple HTML content to Notion block format
+            // Convert HTML content to Notion blocks with rich formatting support
             htmlToNotionBlocks(html) {
                 if (!html) return [];
-                // Strip HTML tags and split into paragraphs
                 const tempDiv = document.createElement('div');
                 tempDiv.innerHTML = html;
-                const text = tempDiv.innerText || tempDiv.textContent || '';
+                const blocks = [];
 
-                // Split by newlines into paragraphs
-                const paragraphs = text.split('\n').filter(p => p.trim());
-
-                return paragraphs.map(p => ({
-                    "object": "block",
-                    "type": "paragraph",
-                    "paragraph": {
-                        "rich_text": [{ "type": "text", "text": { "content": p.substring(0, 2000) } }]
+                const processNode = (node) => {
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const text = node.textContent.trim();
+                        if (text) {
+                            blocks.push({
+                                "object": "block", "type": "paragraph",
+                                "paragraph": { "rich_text": [{ "type": "text", "text": { "content": text.substring(0, 2000) } }] }
+                            });
+                        }
+                        return;
                     }
-                }));
+                    if (node.nodeType !== Node.ELEMENT_NODE) return;
+
+                    const tag = node.tagName.toLowerCase();
+                    const innerText = (node.innerText || '').substring(0, 2000);
+
+                    if (tag === 'h1' || tag === 'h2') {
+                        blocks.push({
+                            "object": "block", "type": "heading_2",
+                            "heading_2": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
+                        });
+                    } else if (tag === 'h3') {
+                        blocks.push({
+                            "object": "block", "type": "heading_3",
+                            "heading_3": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
+                        });
+                    } else if (tag === 'blockquote') {
+                        blocks.push({
+                            "object": "block", "type": "quote",
+                            "quote": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
+                        });
+                    } else if (tag === 'ul') {
+                        node.querySelectorAll(':scope > li').forEach(li => {
+                            blocks.push({
+                                "object": "block", "type": "bulleted_list_item",
+                                "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": (li.innerText || '').substring(0, 2000) } }] }
+                            });
+                        });
+                    } else if (tag === 'ol') {
+                        node.querySelectorAll(':scope > li').forEach(li => {
+                            blocks.push({
+                                "object": "block", "type": "numbered_list_item",
+                                "numbered_list_item": { "rich_text": [{ "type": "text", "text": { "content": (li.innerText || '').substring(0, 2000) } }] }
+                            });
+                        });
+                    } else if (tag === 'hr') {
+                        blocks.push({ "object": "block", "type": "divider", "divider": {} });
+                    } else if (tag === 'p' || tag === 'div') {
+                        // Extract rich text annotations
+                        const richText = this.extractRichText(node);
+                        if (richText.length > 0) {
+                            blocks.push({
+                                "object": "block", "type": "paragraph",
+                                "paragraph": { "rich_text": richText }
+                            });
+                        }
+                    } else if (tag === 'br') {
+                        // Skip standalone <br>
+                    } else {
+                        // Fallback: recurse into children
+                        node.childNodes.forEach(child => processNode(child));
+                    }
+                };
+
+                tempDiv.childNodes.forEach(child => processNode(child));
+
+                // If no blocks were created, treat the whole thing as a paragraph
+                if (blocks.length === 0 && tempDiv.innerText.trim()) {
+                    blocks.push({
+                        "object": "block", "type": "paragraph",
+                        "paragraph": { "rich_text": [{ "type": "text", "text": { "content": tempDiv.innerText.substring(0, 2000) } }] }
+                    });
+                }
+
+                return blocks;
+            }
+
+            // Extract rich text with bold/italic/strikethrough annotations
+            extractRichText(node) {
+                const segments = [];
+                const walk = (el, annotations) => {
+                    el.childNodes.forEach(child => {
+                        if (child.nodeType === Node.TEXT_NODE) {
+                            const text = child.textContent;
+                            if (text) {
+                                segments.push({
+                                    "type": "text",
+                                    "text": { "content": text.substring(0, 2000) },
+                                    "annotations": { ...annotations }
+                                });
+                            }
+                        } else if (child.nodeType === Node.ELEMENT_NODE) {
+                            const tag = child.tagName.toLowerCase();
+                            const newAnno = { ...annotations };
+                            if (tag === 'b' || tag === 'strong') newAnno.bold = true;
+                            if (tag === 'i' || tag === 'em') newAnno.italic = true;
+                            if (tag === 's' || tag === 'strike' || tag === 'del') newAnno.strikethrough = true;
+                            if (tag === 'a') {
+                                segments.push({
+                                    "type": "text",
+                                    "text": { "content": child.innerText.substring(0, 2000), "link": { "url": child.href || '' } },
+                                    "annotations": { ...newAnno }
+                                });
+                                return;
+                            }
+                            walk(child, newAnno);
+                        }
+                    });
+                };
+                walk(node, {});
+                return segments;
             }
 
             // Save journal content to an existing Notion page as blocks
@@ -1171,10 +1348,78 @@
                 }
             }
 
+            // Update the 關聯檔案 Relation on a journal page
+            async updateJournalRelation(item) {
+                try {
+                    if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
+
+                    const relationIds = (item.relatedFileIds || [])
+                        .filter(id => id && id !== 'root' && !id.startsWith('nfm_'))
+                        .map(id => ({ "id": id }));
+
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                        properties: {
+                            "關聯檔案": { "relation": relationIds }
+                        }
+                    });
+                } catch (e) {
+                    console.error("Notion updateJournalRelation error", e);
+                }
+            }
+
             async uploadFile(fileItem) {
-                // Notion API doesn't support file hosting. 
-                // We'd rely on a secondary host or Base64 (too large).
-                return fileItem;
+                // Notion API doesn't support file hosting directly.
+                // If Dropbox is available, upload there and store the link in Notion.
+                const dropboxProvider = app.providers.dropbox;
+
+                if (dropboxProvider && dropboxProvider.accessToken) {
+                    try {
+                        // Upload to Dropbox first
+                        const processedItem = await dropboxProvider.uploadFile(fileItem);
+
+                        // Create a Notion page for the file with the Dropbox link
+                        const properties = {
+                            "名稱": { "title": [{ "text": { "content": fileItem.name } }] },
+                            "類型": { "select": { "name": "📄 檔案" } }
+                        };
+
+                        // Set parent folder relation
+                        if (fileItem.parentId && fileItem.parentId !== 'root' && !fileItem.parentId.startsWith('nfm_')) {
+                            properties["上層資料夾"] = {
+                                "relation": [{ "id": fileItem.parentId }]
+                            };
+                        }
+
+                        // Store the Dropbox URL in 附件 (Files & Media) if available
+                        if (processedItem.sharedLink || processedItem.fileUrl) {
+                            properties["附件"] = {
+                                "files": [{
+                                    "name": fileItem.name,
+                                    "type": "external",
+                                    "external": { "url": processedItem.sharedLink || processedItem.fileUrl }
+                                }]
+                            };
+                        }
+
+                        const response = await this.notionRequest('/pages/file_db', 'POST', {
+                            properties: properties
+                        });
+
+                        if (response && response.id) {
+                            fileItem.id = response.id;
+                        }
+
+                        return fileItem;
+                    } catch (e) {
+                        console.error("Dropbox+Notion upload error:", e);
+                        // Fallback: just create a Notion page without file
+                        return await this.createItem(fileItem);
+                    }
+                } else {
+                    // No Dropbox available, just create a Notion metadata entry
+                    console.warn("No Dropbox token available for file upload. Creating metadata-only entry in Notion.");
+                    return await this.createItem(fileItem);
+                }
             }
 
             async deleteFile(item) {
@@ -1708,11 +1953,69 @@
             openEditor(id) {
                 const item = this.state.items.find(i => i.id === id);
                 this.state.editingId = id;
+                this.state.editingRelatedIds = item.relatedFileIds ? [...item.relatedFileIds] : [];
                 document.getElementById('editor-title').value = item.name;
                 document.getElementById('editor-body').innerHTML = item.content || '';
                 document.getElementById('editor-meta').innerText = `最後更新: ${new Date(item.updatedAt || item.createdAt).toLocaleString()}`;
 
+                // Render related files display
+                this.renderEditorRelations();
+
                 document.getElementById('journal-modal').style.display = 'flex';
+            },
+
+            renderEditorRelations() {
+                const container = document.getElementById('editor-relations');
+                container.innerHTML = '';
+                const ids = this.state.editingRelatedIds || [];
+                if (ids.length === 0) {
+                    container.innerHTML = '<span style="font-size:0.75rem;opacity:0.4;">未關聯檔案 (點擊 📎 新增)</span>';
+                    return;
+                }
+                ids.forEach(rid => {
+                    const related = this.state.items.find(i => i.id === rid);
+                    const name = related ? related.name : rid.substring(0, 8) + '...';
+                    const icon = related && related.type === 'folder' ? '📁' : '📄';
+                    const badge = document.createElement('span');
+                    badge.style.cssText = 'display:inline-flex;align-items:center;gap:4px;background:rgba(97,218,251,0.15);color:#61dafb;padding:3px 10px;border-radius:12px;font-size:0.75rem;cursor:pointer;';
+                    badge.innerHTML = `${icon} ${name} <i class="fas fa-times" style="font-size:0.6rem;opacity:0.6;"></i>`;
+                    badge.onclick = () => {
+                        this.state.editingRelatedIds = this.state.editingRelatedIds.filter(id => id !== rid);
+                        this.renderEditorRelations();
+                    };
+                    container.appendChild(badge);
+                });
+            },
+
+            showRelationPicker() {
+                const list = document.getElementById('relation-file-list');
+                list.innerHTML = '';
+                const allItems = this.state.items.filter(i => i.id !== 'root' && i.type !== 'journal');
+                const selected = this.state.editingRelatedIds || [];
+
+                allItems.forEach(item => {
+                    const div = document.createElement('div');
+                    const isChecked = selected.includes(item.id);
+                    div.style.cssText = `display:flex;align-items:center;gap:10px;padding:8px 12px;border-radius:8px;cursor:pointer;background:${isChecked ? 'rgba(97,218,251,0.15)' : 'rgba(255,255,255,0.05)'};`;
+                    div.innerHTML = `<input type="checkbox" data-id="${item.id}" ${isChecked ? 'checked' : ''} style="accent-color:#61dafb;"> <span>${item.type === 'folder' ? '📁' : '📄'} ${item.name}</span>`;
+                    div.onclick = (e) => {
+                        if (e.target.tagName !== 'INPUT') {
+                            const cb = div.querySelector('input');
+                            cb.checked = !cb.checked;
+                        }
+                        div.style.background = div.querySelector('input').checked ? 'rgba(97,218,251,0.15)' : 'rgba(255,255,255,0.05)';
+                    };
+                    list.appendChild(div);
+                });
+
+                document.getElementById('relation-picker-modal').style.display = 'flex';
+            },
+
+            confirmRelationPick() {
+                const checkboxes = document.querySelectorAll('#relation-file-list input[type=checkbox]:checked');
+                this.state.editingRelatedIds = Array.from(checkboxes).map(cb => cb.dataset.id);
+                this.renderEditorRelations();
+                document.getElementById('relation-picker-modal').style.display = 'none';
             },
 
             async closeEditor() {
@@ -1722,6 +2025,7 @@
                 item.name = document.getElementById('editor-title').value || '無標題';
                 item.content = document.getElementById('editor-body').innerHTML;
                 item.updatedAt = new Date();
+                item.relatedFileIds = this.state.editingRelatedIds || [];
 
                 // Sync to Notion if using Notion provider
                 if (this.storage.saveJournalContent) {
@@ -1729,8 +2033,14 @@
                     await this.storage.saveJournalContent(item);
                 }
 
+                // Sync relations to Notion
+                if (this.storage.updateJournalRelation && item.relatedFileIds.length > 0) {
+                    await this.storage.updateJournalRelation(item);
+                }
+
                 this.saveData();
                 this.state.editingId = null;
+                this.state.editingRelatedIds = [];
                 document.getElementById('journal-modal').style.display = 'none';
                 this.render();
                 this.showToast('已儲存並同步');
