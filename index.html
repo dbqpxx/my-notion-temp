@@ -694,6 +694,10 @@
                 // No extra upload step needed for simulation
                 return fileItem;
             }
+
+            async deleteFile(item) {
+                return true;
+            }
         }
 
         class DropboxProvider {
@@ -821,6 +825,21 @@
                     }
                 }
                 return fileItem;
+            }
+
+            async deleteFile(item) {
+                if (item.type === 'file' && item.dropboxPath && this.dbx) {
+                    try {
+                        await this.dbx.filesDeleteV2({
+                            path: item.dropboxPath
+                        });
+                    } catch (e) {
+                        if (!this.handleError(e)) {
+                            console.error('Delete from Dropbox failed', e);
+                        }
+                    }
+                }
+                return true;
             }
         }
 
@@ -1249,12 +1268,18 @@
                 document.getElementById('context-menu').style.display = 'none';
             },
 
-            deleteItem() {
+            async deleteItem() {
                 if (confirm('確定要刪除此項目嗎？')) {
-                    this.state.items = this.state.items.filter(i => i.id !== this.state.contextId);
-                    this.saveData();
-                    this.render();
-                    this.showToast('已刪除');
+                    const itemToDelete = this.state.items.find(i => i.id === this.state.contextId);
+                    if (itemToDelete) {
+                        if (this.storage.deleteFile) {
+                            await this.storage.deleteFile(itemToDelete);
+                        }
+                        this.state.items = this.state.items.filter(i => i.id !== this.state.contextId);
+                        this.saveData();
+                        this.render();
+                        this.showToast('已刪除');
+                    }
                 }
                 this.hideContextMenu();
             },
