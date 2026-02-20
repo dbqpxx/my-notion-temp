@@ -1,13 +1,16 @@
 <!DOCTYPE html>
 <html lang="zh-TW">
+
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Notion File Manager - Glassmorphism Dashboard</title>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap" rel="stylesheet">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600&family=JetBrains+Mono&display=swap"
+        rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/dropbox.js/10.34.0/Dropbox-sdk.min.js"></script>
     <style>
         :root {
             --primary: #6e8efb;
@@ -230,7 +233,8 @@
             display: block;
         }
 
-        .item-card i.fa-file-lines, .item-card i.fa-file-image {
+        .item-card i.fa-file-lines,
+        .item-card i.fa-file-image {
             font-size: 2.5rem;
             margin-bottom: 15px;
             display: block;
@@ -339,7 +343,7 @@
             padding: 5px 0;
             z-index: 2000;
             min-width: 150px;
-            box-shadow: 0 10px 20px rgba(0,0,0,0.3);
+            box-shadow: 0 10px 20px rgba(0, 0, 0, 0.3);
         }
 
         .menu-item {
@@ -394,24 +398,35 @@
             color: white;
             padding: 12px 24px;
             border-radius: 10px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
             display: none;
             animation: slideIn 0.3s ease-out;
             z-index: 4000;
         }
 
         @keyframes slideIn {
-            from { transform: translateX(100%); }
-            to { transform: translateX(0); }
+            from {
+                transform: translateX(100%);
+            }
+
+            to {
+                transform: translateX(0);
+            }
         }
 
         /* --- Responsive --- */
         @media (max-width: 768px) {
-            #sidebar { display: none; }
-            .search-bar { width: 100%; }
+            #sidebar {
+                display: none;
+            }
+
+            .search-bar {
+                width: 100%;
+            }
         }
     </style>
 </head>
+
 <body oncontextmenu="return false;">
 
     <!-- Sidebar -->
@@ -442,6 +457,9 @@
         </div>
 
         <div class="nav-section" style="margin-top: auto;">
+            <div class="tree-item" onclick="app.toggleSettings()">
+                <i class="fas fa-cog"></i> 設定與儲存
+            </div>
             <div class="tree-item" onclick="app.toggleTheme()">
                 <i class="fas fa-moon"></i> 深色模式
             </div>
@@ -457,7 +475,8 @@
             </div>
             <div class="user-profile">
                 <!-- Notion style user widget placeholder -->
-                <div style="width: 35px; height: 35px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center;">
+                <div
+                    style="width: 35px; height: 35px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center;">
                     <i class="fas fa-user-circle"></i>
                 </div>
             </div>
@@ -477,8 +496,9 @@
             <button class="btn" onclick="document.getElementById('file-input').click()">
                 <i class="fas fa-cloud-upload-alt"></i> 上傳檔案
             </button>
-            <input type="file" id="file-input" style="display:none" multiple onchange="app.handleFileUpload(this.files)">
-            
+            <input type="file" id="file-input" style="display:none" multiple
+                onchange="app.handleFileUpload(this.files)">
+
             <div style="margin-left: auto; display: flex; gap: 10px;">
                 <button class="btn" onclick="app.setViewMode('grid')">
                     <i class="fas fa-th"></i>
@@ -505,7 +525,8 @@
                 <button onclick="document.execCommand('bold')"><i class="fas fa-bold"></i></button>
                 <button onclick="document.execCommand('italic')"><i class="fas fa-italic"></i></button>
                 <button onclick="document.execCommand('insertUnorderedList')"><i class="fas fa-list-ul"></i></button>
-                <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))"><i class="fas fa-link"></i></button>
+                <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))"><i
+                        class="fas fa-link"></i></button>
                 <span style="flex:1"></span>
                 <button onclick="app.closeEditor()"><i class="fas fa-times"></i> 關閉並儲存</button>
             </div>
@@ -518,7 +539,8 @@
         <div class="menu-item" onclick="app.renameItem()"><i class="fas fa-edit"></i> 重新命名</div>
         <div class="menu-item" onclick="app.duplicateItem()"><i class="fas fa-copy"></i> 建立副本</div>
         <div class="menu-item" onclick="app.shareItem()"><i class="fas fa-share-alt"></i> 分享連結</div>
-        <div class="menu-item" style="color: #ff5f56;" onclick="app.deleteItem()"><i class="fas fa-trash"></i> 刪除項目</div>
+        <div class="menu-item" style="color: #ff5f56;" onclick="app.deleteItem()"><i class="fas fa-trash"></i> 刪除項目
+        </div>
         <div class="color-dots" id="folder-colors">
             <div class="dot" style="background: var(--folder-red);" onclick="app.setItemColor('red')"></div>
             <div class="dot" style="background: var(--folder-orange);" onclick="app.setItemColor('orange')"></div>
@@ -540,11 +562,171 @@
     <!-- Toast -->
     <div id="toast" class="toast">操作成功</div>
 
+    <!-- Settings Modal -->
+    <div id="settings-modal" class="modal">
+        <div class="modal-content glass-panel" style="height: auto; max-width: 500px;">
+            <div class="editor-header">
+                <h2>設定</h2>
+            </div>
+            <div style="margin-bottom: 20px;">
+                <h3 style="margin-bottom: 10px;">儲存位置</h3>
+                <div style="display: flex; gap: 10px; flex-direction: column;">
+                    <button class="btn" id="btn-use-local" onclick="app.switchProvider('local')">
+                        <i class="fas fa-hdd"></i> 本機儲存 (LocalStorage)
+                    </button>
+                    <button class="btn" id="btn-use-dropbox" onclick="app.switchProvider('dropbox')">
+                        <i class="fab fa-dropbox"></i> Dropbox
+                    </button>
+                </div>
+                <div id="dropbox-status" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+            </div>
+            <div style="text-align: right;">
+                <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
+            </div>
+        </div>
+    </div>
+
     <script>
-        /**
-         * Notion File Manager - Dashboard Engine
-         * Powered by LocalStorage
-         */
+        // --- Storage Providers ---
+        class LocalStorageProvider {
+            constructor() {
+                this.name = 'local';
+            }
+
+            async init() {
+                // Initialize default data if empty
+                if (!localStorage.getItem('nfm_items')) {
+                    const defaults = [
+                        { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
+                        { id: '1', name: '專案說明', type: 'journal', parentId: 'root', content: '歡迎使用 Notion 檔案管理器 (Local)！', createdAt: new Date() }
+                    ];
+                    localStorage.setItem('nfm_items', JSON.stringify(defaults));
+                }
+                return true;
+            }
+
+            async getItems() {
+                return JSON.parse(localStorage.getItem('nfm_items') || '[]');
+            }
+
+            async saveItems(items) {
+                localStorage.setItem('nfm_items', JSON.stringify(items));
+                return true;
+            }
+
+            async uploadFile(fileItem) {
+                // LocalStorage already has the data in fileItem.fileData (base64)
+                // No extra upload step needed for simulation
+                return fileItem;
+            }
+        }
+
+        class DropboxProvider {
+            constructor(appKey) {
+                this.name = 'dropbox';
+                this.CLIENT_ID = appKey;
+                this.dbx = null;
+                this.accessToken = this.getAccessTokenFromUrl() || localStorage.getItem('nfm_dropbox_token');
+
+                if (this.accessToken) {
+                    this.dbx = new Dropbox.Dropbox({ accessToken: this.accessToken });
+                    localStorage.setItem('nfm_dropbox_token', this.accessToken);
+                    // Clear hash from URL to clean up
+                    if (window.location.hash.includes('access_token')) {
+                        window.history.replaceState({}, document.title, window.location.pathname);
+                    }
+                }
+            }
+
+            getAccessTokenFromUrl() {
+                return new URLSearchParams(window.location.hash.substring(1)).get('access_token');
+            }
+
+            async init() {
+                if (!this.accessToken) {
+                    return false; // Not logged in
+                }
+                return true;
+            }
+
+            login() {
+                const authUrl = `https://www.dropbox.com/oauth2/authorize?client_id=${this.CLIENT_ID}&response_type=token&redirect_uri=${window.location.origin}${window.location.pathname}`;
+                window.location.href = authUrl;
+            }
+
+            logout() {
+                this.accessToken = null;
+                this.dbx = null;
+                localStorage.removeItem('nfm_dropbox_token');
+            }
+
+            // Map Dropbox files to NFM items
+            async getItems() {
+                if (!this.dbx) return [];
+                try {
+                    // Check if nfm_db.json exists in /mynotion
+                    let dbFile;
+                    try {
+                        const response = await this.dbx.filesDownload({ path: '/mynotion/nfm_db.json' });
+                        const blob = response.result.fileBlob;
+                        const text = await blob.text();
+                        return JSON.parse(text);
+                    } catch (e) {
+                        console.log('No DB file found, creating new', e);
+                        // Initial DB
+                        const defaults = [
+                            { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
+                            { id: '1', name: 'Dropbox 說明', type: 'journal', parentId: 'root', content: '這是儲存在 Dropbox /mynotion 的資料！', createdAt: new Date() }
+                        ];
+                        await this.saveItems(defaults);
+                        return defaults;
+                    }
+
+                } catch (error) {
+                    console.error('Dropbox Error', error);
+                    throw error;
+                }
+            }
+
+            async saveItems(items) {
+                if (!this.dbx) return;
+
+                const json = JSON.stringify(items);
+                const file = new File([json], "nfm_db.json", { type: "application/json" });
+
+                await this.dbx.filesUpload({
+                    path: '/mynotion/nfm_db.json',
+                    contents: file,
+                    mode: 'overwrite'
+                });
+                return true;
+            }
+
+            async uploadFile(fileItem) {
+                if (fileItem.type === 'file' && fileItem.fileObj) {
+                    // Upload to /mynotion/filename
+                    const uploadPath = '/mynotion/' + fileItem.name;
+                    try {
+                        const result = await this.dbx.filesUpload({
+                            path: uploadPath,
+                            contents: fileItem.fileObj,
+                            mode: 'add',
+                            autorename: true
+                        });
+
+                        fileItem.dropboxPath = result.result.path_lower;
+                        delete fileItem.fileData;
+                        delete fileItem.fileObj;
+                    } catch (e) {
+                        console.error('Upload failed', e);
+                        throw e;
+                    }
+                }
+                return fileItem;
+            }
+        }
+
+
         const app = {
             state: {
                 items: [],
@@ -552,32 +734,96 @@
                 viewMode: 'grid',
                 editingId: null,
                 contextId: null,
-                searchQuery: ''
+                searchQuery: '',
+                providerName: 'local'
             },
 
-            init() {
-                this.loadData();
-                this.render();
+            storage: null,
+            providers: {
+                local: new LocalStorageProvider(),
+                dropbox: new DropboxProvider('vwm80suenwqp1kc')
+            },
+
+            async init() {
+                // Check URL for auth redirect
+                if (window.location.hash.includes('access_token')) {
+                    this.state.providerName = 'dropbox';
+                } else {
+                    this.state.providerName = localStorage.getItem('nfm_provider') || 'local';
+                }
+
+                await this.switchProvider(this.state.providerName, false);
                 this.setupEventListeners();
                 console.log('NFM Dashboard Initialized');
             },
 
-            loadData() {
-                const savedItems = localStorage.getItem('nfm_items');
-                if (savedItems) {
-                    this.state.items = JSON.parse(savedItems);
+            async switchProvider(name, reload = true) {
+                this.state.providerName = name;
+                this.storage = this.providers[name];
+                localStorage.setItem('nfm_provider', name);
+
+                // Specific init logic
+                const isReady = await this.storage.init();
+
+                if (name === 'dropbox' && !isReady) {
+                    // Need login
+                    if (confirm('需要登入 Dropbox，是否前往？')) {
+                        this.providers.dropbox.login();
+                    } else {
+                        // Fallback
+                        this.switchProvider('local');
+                    }
+                    return;
+                }
+
+                this.loadData();
+                this.updateSettingsUI();
+                if (reload) this.showToast(`已切換至 ${name}`);
+                document.getElementById('settings-modal').style.display = 'none';
+            },
+
+            updateSettingsUI() {
+                const status = document.getElementById('dropbox-status');
+                if (this.providers.dropbox.accessToken) {
+                    status.innerText = 'Dropbox: 已連結';
+                    status.style.color = '#27c93f';
                 } else {
-                    // Default items for first run
-                    this.state.items = [
-                        { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
-                        { id: '1', name: '專案說明', type: 'journal', parentId: 'root', content: '歡迎使用 Notion 檔案管理器！', createdAt: new Date() }
-                    ];
-                    this.saveData();
+                    status.innerText = 'Dropbox: 未連結';
+                }
+
+                document.getElementById('btn-use-local').classList.toggle('primary', this.state.providerName === 'local');
+                document.getElementById('btn-use-dropbox').classList.toggle('primary', this.state.providerName === 'dropbox');
+            },
+
+            toggleSettings() {
+                this.updateSettingsUI();
+                document.getElementById('settings-modal').style.display = 'flex';
+            },
+
+            async loadData() {
+                try {
+                    this.state.items = await this.storage.getItems();
+
+                    // Fix date objects restoration
+                    this.state.items.forEach(i => {
+                        i.createdAt = new Date(i.createdAt);
+                        if (i.updatedAt) i.updatedAt = new Date(i.updatedAt);
+                    });
+
+                    this.render();
+                } catch (e) {
+                    console.error('Load failed', e);
+                    this.showToast('載入失敗');
                 }
             },
 
-            saveData() {
-                localStorage.setItem('nfm_items', JSON.stringify(this.state.items));
+            async saveData() {
+                try {
+                    await this.storage.saveItems(this.state.items);
+                } catch (e) {
+                    console.error('Save failed', e);
+                    this.showToast('儲存失敗 (請檢查網路或容量)');
+                }
             },
 
             render() {
@@ -594,10 +840,10 @@
                 let filteredItems = this.state.items.filter(item => {
                     // Exclude root and filter by current folder
                     if (item.id === 'root') return false;
-                    
+
                     const matchesFolder = item.parentId === this.state.currentFolder;
                     const matchesSearch = item.name.toLowerCase().includes(this.state.searchQuery.toLowerCase());
-                    
+
                     return matchesFolder && matchesSearch;
                 });
 
@@ -614,7 +860,7 @@
 
                     let icon = 'fa-file-lines';
                     let colorStyle = '';
-                    
+
                     if (item.type === 'folder') {
                         icon = 'fa-folder';
                         colorStyle = `color: var(--folder-${item.color || 'blue'})`;
@@ -625,18 +871,18 @@
 
                     if (this.state.viewMode === 'grid') {
                         card.innerHTML = `
-                            <i class="fas ${icon}" style="${colorStyle}"></i>
-                            <div class="item-name">${item.name}</div>
-                            <div class="item-info">${new Date(item.createdAt).toLocaleDateString()}</div>
-                        `;
+                                <i class="fas ${icon}" style="${colorStyle}"></i>
+                                <div class="item-name">${item.name}</div>
+                                <div class="item-info">${new Date(item.createdAt).toLocaleDateString()}</div>
+                            `;
                     } else {
                         card.innerHTML = `
-                            <i class="fas ${icon}" style="${colorStyle}"></i>
-                            <div class="item-name">${item.name}</div>
-                            <div class="item-info">${item.type}</div>
-                            <div class="item-info">${new Date(item.createdAt).toLocaleString()}</div>
-                            <div class="item-info">${item.fileSize ? (item.fileSize / 1024).toFixed(1) + ' KB' : '-'}</div>
-                        `;
+                                <i class="fas ${icon}" style="${colorStyle}"></i>
+                                <div class="item-name">${item.name}</div>
+                                <div class="item-info">${item.type}</div>
+                                <div class="item-info">${new Date(item.createdAt).toLocaleString()}</div>
+                                <div class="item-info">${item.fileSize ? (item.fileSize / 1024).toFixed(1) + ' KB' : '-'}</div>
+                            `;
                     }
 
                     grid.appendChild(card);
@@ -646,10 +892,10 @@
             renderBreadcrumbs() {
                 const container = document.getElementById('breadcrumbs');
                 container.innerHTML = '';
-                
+
                 let path = [];
                 let curr = this.state.items.find(i => i.id === this.state.currentFolder);
-                
+
                 while (curr) {
                     path.unshift(curr);
                     curr = this.state.items.find(i => i.id === curr.parentId);
@@ -670,7 +916,7 @@
             renderFolderTree() {
                 const container = document.getElementById('folder-tree');
                 container.innerHTML = '';
-                
+
                 const folders = this.state.items.filter(i => i.type === 'folder' && i.id !== 'root');
                 folders.forEach(f => {
                     const div = document.createElement('div');
@@ -695,7 +941,24 @@
                 } else if (item.type === 'journal') {
                     this.openEditor(item.id);
                 } else {
-                    this.showToast('預覽檔案中... (Base64 功能演示)');
+                    // File preview
+                    if (item.fileData) {
+                        // Local or Base64 cached
+                        const win = window.open();
+                        win.document.write('<iframe src="' + item.fileData + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                    } else if (item.dropboxPath && this.state.providerName === 'dropbox') {
+                        this.showToast('正在從 Dropbox 取得連結...');
+                        this.providers.dropbox.dbx.filesGetTemporaryLink({ path: item.dropboxPath })
+                            .then(response => {
+                                window.open(response.result.link, '_blank');
+                            })
+                            .catch(err => {
+                                console.error(err);
+                                this.showToast('無法開啟檔案');
+                            });
+                    } else {
+                        this.showToast('無法預覽此檔案');
+                    }
                 }
             },
 
@@ -727,24 +990,39 @@
 
             handleFileUpload(files) {
                 Array.from(files).forEach(file => {
+                    const fileItem = {
+                        id: 'file_' + Date.now() + Math.random(),
+                        name: file.name,
+                        type: 'file',
+                        parentId: this.state.currentFolder,
+                        fileSize: file.size,
+                        fileType: file.type,
+                        createdAt: new Date()
+                    };
+
+                    // We need to keep the file object for upload
+                    fileItem.fileObj = file;
+
+                    // For local preview immediately if small
                     const reader = new FileReader();
-                    reader.onload = (e) => {
-                        this.state.items.push({
-                            id: 'file_' + Date.now() + Math.random(),
-                            name: file.name,
-                            type: 'file',
-                            parentId: this.state.currentFolder,
-                            fileData: e.target.result,
-                            fileSize: file.size,
-                            fileType: file.type,
-                            createdAt: new Date()
-                        });
-                        this.saveData();
-                        this.render();
+                    reader.onload = async (e) => {
+                        // Only cache small files base64 for local storage to avoid quota exceed
+                        if (this.state.providerName === 'local' && file.size < 2000000) {
+                            fileItem.fileData = e.target.result;
+                        }
+
+                        try {
+                            const processedItem = await this.storage.uploadFile(fileItem);
+                            this.state.items.push(processedItem);
+                            this.saveData();
+                            this.render();
+                            this.showToast(`成功上傳 ${file.name}`);
+                        } catch (err) {
+                            this.showToast(`上傳失敗 ${file.name}`);
+                        }
                     };
                     reader.readAsDataURL(file);
                 });
-                this.showToast(`成功上傳 ${files.length} 個檔案`);
             },
 
             // --- Editor ---
@@ -754,18 +1032,18 @@
                 document.getElementById('editor-title').value = item.name;
                 document.getElementById('editor-body').innerHTML = item.content || '';
                 document.getElementById('editor-meta').innerText = `最後更新: ${new Date(item.updatedAt || item.createdAt).toLocaleString()}`;
-                
+
                 document.getElementById('journal-modal').style.display = 'flex';
             },
 
             closeEditor() {
                 const id = this.state.editingId;
                 const item = this.state.items.find(i => i.id === id);
-                
+
                 item.name = document.getElementById('editor-title').value || '無標題';
                 item.content = document.getElementById('editor-body').innerHTML;
                 item.updatedAt = new Date();
-                
+
                 this.saveData();
                 this.state.editingId = null;
                 document.getElementById('journal-modal').style.display = 'none';
@@ -834,7 +1112,7 @@
 
             setupEventListeners() {
                 document.addEventListener('click', () => this.hideContextMenu());
-                
+
                 // Drag and Drop
                 const main = document.getElementById('main-content');
                 const dropZone = document.getElementById('drop-zone');
@@ -866,4 +1144,5 @@
         app.init();
     </script>
 </body>
+
 </html>
