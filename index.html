@@ -491,13 +491,13 @@
                 ondragover="event.preventDefault(); this.style.background='rgba(255,255,255,0.2)'"
                 ondragleave="this.style.background=''"
                 ondrop="event.preventDefault(); this.style.background=''; app.handleMoveItem(event.dataTransfer.getData('text/plain'), 'root'); event.stopPropagation();">
-                <i class="fas fa-home"></i> 根目錄
+                <i class="fas fa-home"></i> 🗂 檔案總管
             </div>
             <div class="tree-item" onclick="app.filterBy('journal')">
-                <i class="fas fa-book"></i> 我的共作日誌
+                <i class="fas fa-book"></i> 📓 共作日誌
             </div>
             <div class="tree-item" onclick="app.filterBy('recent')">
-                <i class="fas fa-clock"></i> 最近更新
+                <i class="fas fa-clock"></i> 🕒 最近更新
             </div>
         </div>
 
@@ -590,6 +590,7 @@
     <div id="context-menu">
         <div class="menu-item" onclick="app.renameItem()"><i class="fas fa-edit"></i> 重新命名</div>
         <div class="menu-item" onclick="app.showMoveModal()"><i class="fas fa-arrows-alt"></i> 移動至...</div>
+        <div class="menu-item" onclick="app.showTagsModal()"><i class="fas fa-tags"></i> 編輯標籤</div>
         <div class="menu-item" onclick="app.duplicateItem()"><i class="fas fa-copy"></i> 建立副本</div>
         <div class="menu-item" onclick="app.shareItem()"><i class="fas fa-share-alt"></i> 分享連結</div>
         <div class="menu-item" style="color: #ff5f56;" onclick="app.deleteItem()"><i class="fas fa-trash"></i> 刪除項目
@@ -678,6 +679,28 @@
             <div style="display: flex; justify-content: flex-end; gap: 10px;">
                 <button class="btn" onclick="document.getElementById('move-modal').style.display='none'">取消</button>
                 <button class="btn primary" onclick="app.confirmMove()">移動</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Tags Modal -->
+    <div id="tags-modal" class="modal">
+        <div class="modal-content glass-panel" style="height: auto; max-width: 400px; padding: 25px;">
+            <div class="editor-header" style="margin-bottom: 15px;">
+                <h2>編輯標籤</h2>
+            </div>
+            <div style="margin-bottom: 15px;">
+                <input type="text" id="tag-input" class="search-bar"
+                    style="width: 100%; border-radius: 8px; padding: 10px; background: rgba(0,0,0,0.2); border: 1px solid rgba(255,255,255,0.2); color: white;"
+                    placeholder="輸入標籤名稱後按 Enter" onkeyup="if(event.key === 'Enter') app.addTag(this.value)">
+            </div>
+            <div id="current-tags"
+                style="display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 20px; min-height: 40px; padding: 10px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; background: rgba(0,0,0,0.1);">
+                <!-- 動態生成標籤 -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn primary"
+                    onclick="document.getElementById('tags-modal').style.display='none'">完成</button>
             </div>
         </div>
     </div>
@@ -1063,7 +1086,9 @@
                     if (item.id === 'root') return false;
 
                     const matchesFolder = item.parentId === this.state.currentFolder;
-                    const matchesSearch = item.name.toLowerCase().includes(this.state.searchQuery.toLowerCase());
+                    const query = this.state.searchQuery.toLowerCase();
+                    const matchesSearch = item.name.toLowerCase().includes(query) ||
+                        (item.tags && item.tags.some(t => t.toLowerCase().includes(query)));
 
                     return matchesFolder && matchesSearch;
                 });
@@ -1117,17 +1142,36 @@
                         colorStyle = 'color: #ffbd2e';
                     }
 
+                    let tagsHtml = '';
+                    if (item.tags && item.tags.length > 0) {
+                        tagsHtml = `<div class="item-tags" style="margin-top: 8px; display: flex; gap: 4px; flex-wrap: wrap; justify-content: center;">
+                            ${item.tags.map(t => `<span style="background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">${t}</span>`).join('')}
+                        </div>`;
+                    }
+
+                    let tagsHtmlList = '';
+                    if (item.tags && item.tags.length > 0) {
+                        tagsHtmlList = `<div class="item-tags" style="display: flex; gap: 4px; flex-wrap: wrap;">
+                            ${item.tags.map(t => `<span style="background: rgba(255,255,255,0.15); padding: 2px 6px; border-radius: 4px; font-size: 0.65rem;">${t}</span>`).join('')}
+                        </div>`;
+                    }
+
                     if (this.state.viewMode === 'grid') {
                         card.innerHTML = `
                                 <i class="fas ${icon}" style="${colorStyle}"></i>
                                 <div class="item-name">${item.name}</div>
                                 <div class="item-info">${new Date(item.createdAt).toLocaleDateString()}</div>
+                                ${tagsHtml}
                             `;
                     } else {
+                        // For list view, let's append tags to item-name area or a new column
                         card.innerHTML = `
                                 <i class="fas ${icon}" style="${colorStyle}"></i>
-                                <div class="item-name">${item.name}</div>
-                                <div class="item-info">${item.type}</div>
+                                <div style="display: flex; flex-direction: column; overflow: hidden;">
+                                    <div class="item-name">${item.name}</div>
+                                    ${tagsHtmlList}
+                                </div>
+                                <div class="item-info">${item.type === 'folder' ? '資料夾' : (item.type === 'journal' ? '日誌' : '檔案')}</div>
                                 <div class="item-info">${new Date(item.createdAt).toLocaleString()}</div>
                                 <div class="item-info">${item.fileSize ? (item.fileSize / 1024).toFixed(1) + ' KB' : '-'}</div>
                             `;
@@ -1151,7 +1195,7 @@
 
                 path.forEach((p, idx) => {
                     const span = document.createElement('span');
-                    span.innerText = p.id === 'root' ? '🏠 首頁' : p.name;
+                    span.innerText = p.id === 'root' ? '🗂 檔案總管' : p.name;
                     span.onclick = () => this.navigateTo(p.id);
                     container.appendChild(span);
                     if (idx < path.length - 1) {
@@ -1357,6 +1401,59 @@
 
             hideContextMenu() {
                 document.getElementById('context-menu').style.display = 'none';
+            },
+
+            showTagsModal() {
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                if (!item) return;
+
+                if (!item.tags) item.tags = [];
+
+                this.renderTagsModal(item);
+                document.getElementById('tag-input').value = '';
+                document.getElementById('tags-modal').style.display = 'flex';
+                this.hideContextMenu();
+            },
+
+            renderTagsModal(item) {
+                const container = document.getElementById('current-tags');
+                container.innerHTML = '';
+                if (item.tags.length === 0) {
+                    container.innerHTML = '<span style="opacity:0.5; font-size: 0.8rem;">尚無標籤，請於上方輸入新增</span>';
+                    return;
+                }
+                item.tags.forEach(tag => {
+                    const el = document.createElement('span');
+                    el.style.cssText = "background: rgba(255,255,255,0.2); padding: 4px 10px; border-radius: 12px; font-size: 0.8rem; display: flex; align-items: center; gap: 5px;";
+                    el.innerHTML = `${tag} <i class="fas fa-times" style="cursor:pointer;" onclick="app.removeTag('${tag}')"></i>`;
+                    container.appendChild(el);
+                });
+            },
+
+            addTag(val) {
+                const tag = val.trim();
+                if (!tag) return;
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                if (!item.tags) item.tags = [];
+                if (!item.tags.includes(tag)) {
+                    item.tags.push(tag);
+                    item.updatedAt = new Date();
+                    this.saveData();
+                    this.render();
+                }
+                document.getElementById('tag-input').value = '';
+                this.renderTagsModal(item);
+            },
+
+            removeTag(tag) {
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                if (item && item.tags) {
+                    item.tags = item.tags.filter(t => t !== tag);
+                    item.updatedAt = new Date();
+                    this.saveData();
+                    this.render();
+                    this.renderTagsModal(item);
+                }
             },
 
             showMoveModal() {
