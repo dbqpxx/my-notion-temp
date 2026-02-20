@@ -1431,6 +1431,21 @@
                 this.render();
             },
 
+            toggleSettings() {
+                const modal = document.getElementById('settings-modal');
+                modal.style.display = modal.style.display === 'flex' ? 'none' : 'flex';
+                // Update select element state
+                document.getElementById('provider-select').value = this.state.providerName;
+
+                // Show/hide Dropbox disconnect button
+                const btnDisconnect = document.getElementById('btn-disconnect-dropbox');
+                if (this.state.providerName === 'dropbox' && this.providers.dropbox.accessToken) {
+                    btnDisconnect.style.display = 'block';
+                } else {
+                    btnDisconnect.style.display = 'none';
+                }
+            },
+
             createItem(type) {
                 const name = prompt(`輸入${type === 'folder' ? '資料夾' : '日誌'}名稱:`, `新${type === 'folder' ? '資料夾' : '日誌'}`);
                 if (!name) return;
