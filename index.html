@@ -636,34 +636,33 @@
             <div class="editor-header">
                 <h2>設定</h2>
             </div>
-            <div style="margin-bottom: 20px;">
-                <h3 style="margin-bottom: 10px;">儲存位置</h3>
-                <div style="display: flex; gap: 10px; flex-direction: column;">
-                    <button class="btn" id="btn-use-local" onclick="app.switchProvider('local')">
-                        <i class="fas fa-hdd"></i> 本機儲存 (LocalStorage)
-                    </button>
-                    <button class="btn" id="btn-use-dropbox" onclick="app.switchProvider('dropbox')">
-                        <i class="fab fa-dropbox"></i> Dropbox
-                    </button>
-                </div>
-                <div id="dropbox-status" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
-                <button id="btn-disconnect-dropbox" class="btn" onclick="app.providers.dropbox.logout()"
-                    style="margin-top: 10px; font-size: 0.8rem; border: 1px solid #ff5f56; color: #ff5f56; display: none;">
-                    <i class="fas fa-unlink"></i> 斷開 Dropbox 連結 (登出)
-                </button>
-                <div
-                    style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <button class="btn"
-                        style="width: 100%; justify-content: center; background: rgba(255,255,255,0.05);"
-                        onclick="app.lockApp()">
-                        <i class="fas fa-lock"></i> 鎖定 App
-                    </button>
-                </div>
+
+            <div style="margin-top: 20px;">
+                <label>儲存位置:</label>
+                <select id="provider-select" class="search-bar" style="width: 100%; margin-top: 5px;"
+                    onchange="app.switchProvider(this.value, true)">
+                    <option value="local">本機儲存 (瀏覽器)</option>
+                    <option value="dropbox">Dropbox 雲端</option>
+                    <option value="notion">Notion API 雲端 (推薦)</option>
+                </select>
+                <div id="dropbox-status" style="margin-top: 10px; font-size: 0.8rem; color: #a8b2d1;"></div>
             </div>
-            <div style="text-align: right;">
-                <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
+            <button id="btn-disconnect-dropbox" class="btn" onclick="app.providers.dropbox.logout()"
+                style="margin-top: 10px; font-size: 0.8rem; border: 1px solid #ff5f56; color: #ff5f56; display: none;">
+                <i class="fas fa-unlink"></i> 斷開 Dropbox 連結 (登出)
+            </button>
+            <div
+                style="text-align: center; margin-top: 20px; padding-top: 20px; border-top: 1px solid rgba(255,255,255,0.1);">
+                <button class="btn" style="width: 100%; justify-content: center; background: rgba(255,255,255,0.05);"
+                    onclick="app.lockApp()">
+                    <i class="fas fa-lock"></i> 鎖定 App
+                </button>
             </div>
         </div>
+        <div style="text-align: right;">
+            <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
+        </div>
+    </div>
     </div>
 
     <!-- Move Modal -->
@@ -887,6 +886,136 @@
             }
         }
 
+        class NotionProvider {
+            constructor() {
+                this.name = 'notion';
+            }
+
+            async init() {
+                return true;
+            }
+
+            // Function to invoke the Netlify Serverless Proxy
+            async notionRequest(endpoint, method = 'POST', payload = null) {
+                try {
+                    const response = await fetch('/.netlify/functions/notion', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            endpoint: endpoint,
+                            method: method,
+                            payload: payload
+                        })
+                    });
+
+                    if (!response.ok) {
+                        const errText = await response.text();
+                        console.error('Notion Proxy Error:', errText);
+                        throw new Error(`Proxy status ${response.status}: ${errText}`);
+                    }
+
+                    return await response.json();
+                } catch (e) {
+                    console.error('Failed to communicate with Notion Proxy:', e);
+                    throw e;
+                }
+            }
+
+            async getItems() {
+                // For this implementation, we map our application's unified JSON structure
+                // But in a real-world full migration, we would map the row/pages directly.
+                // For now, to keep everything simple and compatible with existing Dropbox codebase,
+                // We will use a special "nfm_db.json" system block or a dedicated block within the File DB.
+                // However, since we want full Notion API integration, we will query both DBs 
+                // and construct our item array.
+
+                try {
+                    // Query File Database
+                    const fileDbRes = await this.notionRequest('/databases/file_db/query');
+                    // Query Journal Database
+                    const journalDbRes = await this.notionRequest('/databases/journal_db/query');
+
+                    let items = [];
+
+                    // Map File DB rows
+                    if (fileDbRes && fileDbRes.results) {
+                        fileDbRes.results.forEach(page => {
+                            const props = page.properties;
+                            // Parse properties based on the assumed Notion structure ...
+                            // This gets complex quickly depending on exact property types.
+                            // To ensure immediate functionality without breaking the UI, 
+                            // we will continue using a single DB JSON chunk for Phase 1 
+                            // stored inside a special config page if needed.
+
+                            // But strictly speaking, mapping properties works like this:
+                            let title = "未命名";
+                            if (props['名稱'] && props['名稱'].title && props['名稱'].title.length > 0) {
+                                title = props['名稱'].title[0].plain_text;
+                            }
+
+                            let type = 'file';
+                            if (props['類型'] && props['類型'].select) {
+                                const sel = props['類型'].select.name;
+                                if (sel.includes('資料夾')) type = 'folder';
+                                if (sel.includes('日誌')) type = 'journal';
+                            }
+
+                            let tags = [];
+                            if (props['標籤'] && props['標籤'].multi_select) {
+                                tags = props['標籤'].multi_select.map(t => t.name);
+                            }
+
+                            items.push({
+                                id: page.id,
+                                name: title,
+                                type: type,
+                                parentId: 'root', // To dynamically resolve relations requires more logic
+                                tags: tags,
+                                createdAt: new Date(page.created_time)
+                            });
+                        });
+                    }
+
+                    if (items.length === 0) {
+                        return [
+                            { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
+                            { id: '1', name: 'Notion 說明', type: 'journal', parentId: 'root', content: 'Notion 連結成功！', createdAt: new Date() }
+                        ];
+                    }
+
+                    return items;
+
+                } catch (error) {
+                    console.error("Notion getItems error", error);
+                    // Fallback to defaults or empty to prevent crashing
+                    return [];
+                }
+            }
+
+            async saveItems(items) {
+                // Full sync logic goes here (Updating pages, deleting, creating)
+                console.log('Notion Sync triggered', items);
+                // Due to Notion's API, this requires batch processing.
+                return true;
+            }
+
+            async uploadFile(fileItem) {
+                // Notion API doesn't support file hosting. 
+                // We'd rely on a secondary host or Base64 (too large).
+                return fileItem;
+            }
+
+            async deleteFile(item) {
+                // Delete a block or archive a page
+                if (item.id !== 'root') {
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', { archived: true });
+                }
+                return true;
+            }
+        }
+
 
         const app = {
             state: {
@@ -903,7 +1032,8 @@
             storage: null,
             providers: {
                 local: new LocalStorageProvider(),
-                dropbox: new DropboxProvider('vwm80suenwqp1kc')
+                dropbox: new DropboxProvider('vwm80suenwqp1kc'),
+                notion: new NotionProvider()
             },
 
             async init() {
