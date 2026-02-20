@@ -943,13 +943,7 @@
                     if (fileDbRes && fileDbRes.results) {
                         fileDbRes.results.forEach(page => {
                             const props = page.properties;
-                            // Parse properties based on the assumed Notion structure ...
-                            // This gets complex quickly depending on exact property types.
-                            // To ensure immediate functionality without breaking the UI, 
-                            // we will continue using a single DB JSON chunk for Phase 1 
-                            // stored inside a special config page if needed.
 
-                            // But strictly speaking, mapping properties works like this:
                             let title = "未命名";
                             if (props['名稱'] && props['名稱'].title && props['名稱'].title.length > 0) {
                                 title = props['名稱'].title[0].plain_text;
@@ -967,12 +961,31 @@
                                 tags = props['標籤'].multi_select.map(t => t.name);
                             }
 
+                            // Read parent folder relation
+                            let parentId = 'root';
+                            if (props['上層資料夾'] && props['上層資料夾'].relation && props['上層資料夾'].relation.length > 0) {
+                                parentId = props['上層資料夾'].relation[0].id;
+                            }
+
+                            // Read folder color
+                            let color = 'blue';
+                            if (props['資料夾顏色'] && props['資料夾顏色'].select) {
+                                const colorName = props['資料夾顏色'].select.name;
+                                if (colorName.includes('🔴')) color = 'red';
+                                else if (colorName.includes('🟠')) color = 'orange';
+                                else if (colorName.includes('🟡')) color = 'yellow';
+                                else if (colorName.includes('🟢')) color = 'green';
+                                else if (colorName.includes('🔵')) color = 'blue';
+                                else if (colorName.includes('🟣')) color = 'purple';
+                            }
+
                             items.push({
                                 id: page.id,
                                 name: title,
                                 type: type,
-                                parentId: 'root', // To dynamically resolve relations requires more logic
+                                parentId: parentId,
                                 tags: tags,
+                                color: color,
                                 createdAt: new Date(page.created_time)
                             });
                         });
@@ -1026,6 +1039,12 @@
                         properties["類型"] = {
                             "select": { "name": item.type === 'folder' ? '📁 資料夾' : '📄 檔案' }
                         };
+                        // Set parent folder relation if not root
+                        if (item.parentId && item.parentId !== 'root' && !item.parentId.startsWith('nfm_')) {
+                            properties["上層資料夾"] = {
+                                "relation": [{ "id": item.parentId }]
+                            };
+                        }
                     }
 
                     if (item.tags && item.tags.length > 0) {
@@ -1125,6 +1144,30 @@
                     });
                 } catch (e) {
                     console.error("Notion updateItem error", e);
+                }
+            }
+
+            async updateParentRelation(item) {
+                try {
+                    if (item.id === 'root' || item.id.startsWith('nfm_')) return;
+
+                    const properties = {};
+                    if (item.parentId && item.parentId !== 'root' && !item.parentId.startsWith('nfm_')) {
+                        properties["上層資料夾"] = {
+                            "relation": [{ "id": item.parentId }]
+                        };
+                    } else {
+                        // Moving to root = clear the relation
+                        properties["上層資料夾"] = {
+                            "relation": []
+                        };
+                    }
+
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                        properties: properties
+                    });
+                } catch (e) {
+                    console.error("Notion updateParentRelation error", e);
                 }
             }
 
@@ -1493,7 +1536,7 @@
             },
 
             // --- Handlers ---
-            handleMoveItem(itemId, targetFolderId) {
+            async handleMoveItem(itemId, targetFolderId) {
                 if (!itemId || !targetFolderId) return;
                 if (itemId === targetFolderId) return; // Cannot move into itself
 
@@ -1514,6 +1557,13 @@
 
                 item.parentId = targetFolderId;
                 item.updatedAt = new Date();
+
+                // Sync the parent folder relation to Notion
+                if (this.storage.updateParentRelation) {
+                    this.showToast('正在同步移動操作...');
+                    await this.storage.updateParentRelation(item);
+                }
+
                 this.saveData();
                 this.render();
                 this.showToast('已移動項目');
