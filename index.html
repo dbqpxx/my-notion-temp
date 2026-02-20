@@ -1010,8 +1010,8 @@
                     const properties = {};
 
                     if (isJournal) {
-                        // Journal DB uses "標題" as the title property
-                        properties["標題"] = {
+                        // Journal DB title property
+                        properties["名稱"] = {
                             "title": [{ "text": { "content": item.name } }]
                         };
                         // Add date property
@@ -1097,7 +1097,7 @@
                     }
 
                     // Also update the title
-                    const titleProp = item.type === 'journal' ? '標題' : '名稱';
+                    const titleProp = '名稱';
                     await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
                         properties: {
                             [titleProp]: { "title": [{ "text": { "content": item.name } }] }
