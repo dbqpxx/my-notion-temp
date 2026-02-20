@@ -589,6 +589,7 @@
     <!-- Context Menu -->
     <div id="context-menu">
         <div class="menu-item" onclick="app.renameItem()"><i class="fas fa-edit"></i> 重新命名</div>
+        <div class="menu-item" onclick="app.showMoveModal()"><i class="fas fa-arrows-alt"></i> 移動至...</div>
         <div class="menu-item" onclick="app.duplicateItem()"><i class="fas fa-copy"></i> 建立副本</div>
         <div class="menu-item" onclick="app.shareItem()"><i class="fas fa-share-alt"></i> 分享連結</div>
         <div class="menu-item" style="color: #ff5f56;" onclick="app.deleteItem()"><i class="fas fa-trash"></i> 刪除項目
@@ -660,6 +661,23 @@
             </div>
             <div style="text-align: right;">
                 <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Move Modal -->
+    <div id="move-modal" class="modal">
+        <div class="modal-content glass-panel" style="height: auto; max-width: 400px; padding: 25px;">
+            <div class="editor-header" style="margin-bottom: 15px;">
+                <h2>選擇目標資料夾</h2>
+            </div>
+            <div id="move-folder-list"
+                style="max-height: 250px; overflow-y: auto; margin-bottom: 20px; border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; padding: 10px; background: rgba(0,0,0,0.1);">
+                <!-- 動態生成資料夾列表 -->
+            </div>
+            <div style="display: flex; justify-content: flex-end; gap: 10px;">
+                <button class="btn" onclick="document.getElementById('move-modal').style.display='none'">取消</button>
+                <button class="btn primary" onclick="app.confirmMove()">移動</button>
             </div>
         </div>
     </div>
@@ -855,7 +873,8 @@
                 editingId: null,
                 contextId: null,
                 searchQuery: '',
-                providerName: 'local'
+                providerName: 'local',
+                moveTargetFolderId: null
             },
 
             storage: null,
@@ -1338,6 +1357,50 @@
 
             hideContextMenu() {
                 document.getElementById('context-menu').style.display = 'none';
+            },
+
+            showMoveModal() {
+                const item = this.state.items.find(i => i.id === this.state.contextId);
+                if (!item) return;
+
+                this.state.moveTargetFolderId = null;
+                const modal = document.getElementById('move-modal');
+                const list = document.getElementById('move-folder-list');
+                list.innerHTML = '';
+
+                // Add root
+                this.appendMoveFolderOption('root', '🏠 根目錄', 0);
+
+                // Add all other folders recursively or just flat
+                const folders = this.state.items.filter(i => i.type === 'folder' && i.id !== 'root');
+                folders.forEach(f => {
+                    this.appendMoveFolderOption(f.id, `📁 ${f.name}`, 0);
+                });
+
+                modal.style.display = 'flex';
+                this.hideContextMenu();
+            },
+
+            appendMoveFolderOption(id, label, depth) {
+                const div = document.createElement('div');
+                div.className = 'tree-item';
+                div.style.paddingLeft = `${12 + depth * 15}px`;
+                div.innerText = label;
+                div.onclick = () => {
+                    Array.from(document.getElementById('move-folder-list').children).forEach(c => c.classList.remove('active'));
+                    div.classList.add('active');
+                    this.state.moveTargetFolderId = id;
+                };
+                document.getElementById('move-folder-list').appendChild(div);
+            },
+
+            confirmMove() {
+                if (!this.state.moveTargetFolderId) {
+                    this.showToast('請先選擇目標資料夾');
+                    return;
+                }
+                this.handleMoveItem(this.state.contextId, this.state.moveTargetFolderId);
+                document.getElementById('move-modal').style.display = 'none';
             },
 
             async deleteItem() {
