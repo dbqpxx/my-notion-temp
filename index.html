@@ -1007,20 +1007,25 @@
                     const dbEndpoint = isJournal ? '/pages/journal_db' : '/pages/file_db';
 
                     // Prepare Notion properties based on our Guide
-                    const properties = {
-                        "名稱": {
-                            "title": [
-                                { "text": { "content": item.name } }
-                            ]
-                        }
-                    };
+                    const properties = {};
 
-                    if (!isJournal) {
+                    if (isJournal) {
+                        // Journal DB uses "標題" as the title property
+                        properties["標題"] = {
+                            "title": [{ "text": { "content": item.name } }]
+                        };
+                        // Add date property
+                        properties["日期"] = {
+                            "date": { "start": new Date().toISOString().split('T')[0] }
+                        };
+                    } else {
+                        // File DB uses "名稱" as the title property
+                        properties["名稱"] = {
+                            "title": [{ "text": { "content": item.name } }]
+                        };
                         properties["類型"] = {
                             "select": { "name": item.type === 'folder' ? '📁 資料夾' : '📄 檔案' }
                         };
-                        // We map parentId to a relation or simple text for now if relation isn't set up perfectly yet
-                        // For simplicity in Phase 1, we skip Relation property update to avoid strict constraint errors
                     }
 
                     if (item.tags && item.tags.length > 0) {
@@ -1029,9 +1034,15 @@
                         };
                     }
 
-                    const response = await this.notionRequest(dbEndpoint, 'POST', {
-                        properties: properties
-                    });
+                    // Build request body
+                    const requestBody = { properties: properties };
+
+                    // If there's initial content, add it as children blocks
+                    if (item.content) {
+                        requestBody.children = this.htmlToNotionBlocks(item.content);
+                    }
+
+                    const response = await this.notionRequest(dbEndpoint, 'POST', requestBody);
 
                     // Update ID with actual Notion ID
                     if (response && response.id) {
@@ -1041,6 +1052,59 @@
                 } catch (e) {
                     console.error("Notion createItem error", e);
                     throw e;
+                }
+            }
+
+            // Convert simple HTML content to Notion block format
+            htmlToNotionBlocks(html) {
+                if (!html) return [];
+                // Strip HTML tags and split into paragraphs
+                const tempDiv = document.createElement('div');
+                tempDiv.innerHTML = html;
+                const text = tempDiv.innerText || tempDiv.textContent || '';
+
+                // Split by newlines into paragraphs
+                const paragraphs = text.split('\n').filter(p => p.trim());
+
+                return paragraphs.map(p => ({
+                    "object": "block",
+                    "type": "paragraph",
+                    "paragraph": {
+                        "rich_text": [{ "type": "text", "text": { "content": p.substring(0, 2000) } }]
+                    }
+                }));
+            }
+
+            // Save journal content to an existing Notion page as blocks
+            async saveJournalContent(item) {
+                try {
+                    if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
+
+                    // First delete existing blocks in the page
+                    const existingBlocks = await this.notionRequest(`/blocks/${item.id}/children`, 'GET');
+                    if (existingBlocks && existingBlocks.results) {
+                        for (const block of existingBlocks.results) {
+                            await this.notionRequest(`/blocks/${block.id}`, 'DELETE');
+                        }
+                    }
+
+                    // Then append new content blocks
+                    const blocks = this.htmlToNotionBlocks(item.content);
+                    if (blocks.length > 0) {
+                        await this.notionRequest(`/blocks/${item.id}/children`, 'PATCH', {
+                            children: blocks
+                        });
+                    }
+
+                    // Also update the title
+                    const titleProp = item.type === 'journal' ? '標題' : '名稱';
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                        properties: {
+                            [titleProp]: { "title": [{ "text": { "content": item.name } }] }
+                        }
+                    });
+                } catch (e) {
+                    console.error("Notion saveJournalContent error", e);
                 }
             }
 
@@ -1601,7 +1665,7 @@
                 document.getElementById('journal-modal').style.display = 'flex';
             },
 
-            closeEditor() {
+            async closeEditor() {
                 const id = this.state.editingId;
                 const item = this.state.items.find(i => i.id === id);
 
@@ -1609,11 +1673,17 @@
                 item.content = document.getElementById('editor-body').innerHTML;
                 item.updatedAt = new Date();
 
+                // Sync to Notion if using Notion provider
+                if (this.storage.saveJournalContent) {
+                    this.showToast('正在同步日誌到 Notion...');
+                    await this.storage.saveJournalContent(item);
+                }
+
                 this.saveData();
                 this.state.editingId = null;
                 document.getElementById('journal-modal').style.display = 'none';
                 this.render();
-                this.showToast('已自動儲存');
+                this.showToast('已儲存並同步');
             },
 
             // --- Context Menu Actions ---
