@@ -579,6 +579,10 @@
                     </button>
                 </div>
                 <div id="dropbox-status" style="margin-top: 10px; font-size: 0.8rem; opacity: 0.7;"></div>
+                <button id="btn-disconnect-dropbox" class="btn" onclick="app.providers.dropbox.logout()"
+                    style="margin-top: 10px; font-size: 0.8rem; border: 1px solid #ff5f56; color: #ff5f56; display: none;">
+                    <i class="fas fa-unlink"></i> 斷開 Dropbox 連結 (登出)
+                </button>
             </div>
             <div style="text-align: right;">
                 <button class="btn" onclick="document.getElementById('settings-modal').style.display='none'">關閉</button>
@@ -658,6 +662,20 @@
                 this.accessToken = null;
                 this.dbx = null;
                 localStorage.removeItem('nfm_dropbox_token');
+                window.location.hash = '';
+                app.switchProvider('local');
+            }
+
+            handleError(error) {
+                // Check for 401 Unauthorized (invalid token or scope mismatch)
+                const status = error.status || (error.error && error.error.status);
+                if (status === 401) {
+                    alert('Dropbox 授權已過期或權限不足，請重新連結。');
+                    this.logout();
+                    return true; // Handled
+                }
+                console.error('Dropbox API Error', error);
+                return false; // Not handled
             }
 
             // Map Dropbox files to NFM items
@@ -672,6 +690,8 @@
                         const text = await blob.text();
                         return JSON.parse(text);
                     } catch (e) {
+                        if (this.handleError(e)) return [];
+
                         console.log('No DB file found, creating new', e);
                         // Initial DB
                         const defaults = [
@@ -683,8 +703,8 @@
                     }
 
                 } catch (error) {
-                    console.error('Dropbox Error', error);
-                    throw error;
+                    if (!this.handleError(error)) throw error;
+                    return [];
                 }
             }
 
@@ -694,11 +714,16 @@
                 const json = JSON.stringify(items);
                 const file = new File([json], "nfm_db.json", { type: "application/json" });
 
-                await this.dbx.filesUpload({
-                    path: '/mynotion/nfm_db.json',
-                    contents: file,
-                    mode: 'overwrite'
-                });
+                try {
+                    await this.dbx.filesUpload({
+                        path: '/mynotion/nfm_db.json',
+                        contents: file,
+                        mode: 'overwrite'
+                    });
+                } catch (error) {
+                    this.handleError(error);
+                    throw error;
+                }
                 return true;
             }
 
@@ -718,8 +743,10 @@
                         delete fileItem.fileData;
                         delete fileItem.fileObj;
                     } catch (e) {
-                        console.error('Upload failed', e);
-                        throw e;
+                        if (!this.handleError(e)) {
+                            console.error('Upload failed', e);
+                            throw e;
+                        }
                     }
                 }
                 return fileItem;
@@ -784,11 +811,16 @@
 
             updateSettingsUI() {
                 const status = document.getElementById('dropbox-status');
+                const disconnectBtn = document.getElementById('btn-disconnect-dropbox');
+
                 if (this.providers.dropbox.accessToken) {
                     status.innerText = 'Dropbox: 已連結';
                     status.style.color = '#27c93f';
+                    disconnectBtn.style.display = 'flex';
                 } else {
                     status.innerText = 'Dropbox: 未連結';
+                    status.style.color = '';
+                    disconnectBtn.style.display = 'none';
                 }
 
                 document.getElementById('btn-use-local').classList.toggle('primary', this.state.providerName === 'local');
