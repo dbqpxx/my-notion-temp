@@ -23,6 +23,43 @@ exports.handler = async function (event, context) {
             };
         }
 
+        // Special debug endpoint: list all databases the integration can see
+        if (endpoint === '/debug/list_databases') {
+            const searchPayload = JSON.stringify({
+                filter: { value: "database", property: "object" }
+            });
+            const searchOptions = {
+                hostname: 'api.notion.com',
+                port: 443,
+                path: '/v1/search',
+                method: 'POST',
+                headers: {
+                    'Authorization': `Bearer ${token}`,
+                    'Notion-Version': '2022-06-28',
+                    'Content-Type': 'application/json',
+                    'Content-Length': Buffer.byteLength(searchPayload)
+                }
+            };
+            return new Promise((resolve) => {
+                const req = https.request(searchOptions, (res) => {
+                    let resData = '';
+                    res.on('data', (chunk) => { resData += chunk; });
+                    res.on('end', () => {
+                        resolve({
+                            statusCode: res.statusCode,
+                            headers: { 'Content-Type': 'application/json', 'Access-Control-Allow-Origin': '*' },
+                            body: resData
+                        });
+                    });
+                });
+                req.on('error', (e) => {
+                    resolve({ statusCode: 500, body: JSON.stringify({ error: e.message }) });
+                });
+                req.write(searchPayload);
+                req.end();
+            });
+        }
+
         // We process custom endpoints to securely inject the DB IDs without sending them from frontend
         let actualEndpoint = endpoint;
         if (endpoint === '/databases/file_db/query') {
