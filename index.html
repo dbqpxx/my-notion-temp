@@ -487,7 +487,10 @@
 
         <div class="nav-section">
             <div class="nav-title">快速存取</div>
-            <div class="tree-item active" onclick="app.navigateTo('root')">
+            <div class="tree-item active" onclick="app.navigateTo('root')"
+                ondragover="event.preventDefault(); this.style.background='rgba(255,255,255,0.2)'"
+                ondragleave="this.style.background=''"
+                ondrop="event.preventDefault(); this.style.background=''; app.handleMoveItem(event.dataTransfer.getData('text/plain'), 'root'); event.stopPropagation();">
                 <i class="fas fa-home"></i> 根目錄
             </div>
             <div class="tree-item" onclick="app.filterBy('journal')">
@@ -757,10 +760,10 @@
             async getItems() {
                 if (!this.dbx) return [];
                 try {
-                    // Check if nfm_db.json exists in /mynotion
+                    // Check if nfm_db.json exists in root
                     let dbFile;
                     try {
-                        const response = await this.dbx.filesDownload({ path: '/mynotion/nfm_db.json' });
+                        const response = await this.dbx.filesDownload({ path: '/nfm_db.json' });
                         const blob = response.result.fileBlob;
                         const text = await blob.text();
                         return JSON.parse(text);
@@ -771,7 +774,7 @@
                         // Initial DB
                         const defaults = [
                             { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
-                            { id: '1', name: 'Dropbox 說明', type: 'journal', parentId: 'root', content: '這是儲存在 Dropbox /mynotion 的資料！', createdAt: new Date() }
+                            { id: '1', name: 'Dropbox 說明', type: 'journal', parentId: 'root', content: '這是儲存在 Dropbox 根目錄的資料！', createdAt: new Date() }
                         ];
                         await this.saveItems(defaults);
                         return defaults;
@@ -791,7 +794,7 @@
 
                 try {
                     await this.dbx.filesUpload({
-                        path: '/mynotion/nfm_db.json',
+                        path: '/nfm_db.json',
                         contents: file,
                         mode: 'overwrite'
                     });
@@ -804,8 +807,8 @@
 
             async uploadFile(fileItem) {
                 if (fileItem.type === 'file' && fileItem.fileObj) {
-                    // Upload to /mynotion/filename
-                    const uploadPath = '/mynotion/' + fileItem.name;
+                    // Upload to /filename
+                    const uploadPath = '/' + fileItem.name;
                     try {
                         const result = await this.dbx.filesUpload({
                             path: uploadPath,
@@ -1057,6 +1060,33 @@
                     card.oncontextmenu = (e) => this.showContextMenu(e, item.id);
                     card.onclick = () => this.handleItemClick(item);
 
+                    // Drag and Drop
+                    card.draggable = true;
+                    card.ondragstart = (e) => {
+                        e.dataTransfer.setData('text/plain', item.id);
+                        e.stopPropagation();
+                    };
+
+                    if (item.type === 'folder') {
+                        card.ondragover = (e) => {
+                            e.preventDefault();
+                            card.style.transform = 'scale(1.05)';
+                            card.style.border = '1px solid var(--primary)';
+                        };
+                        card.ondragleave = (e) => {
+                            card.style.transform = '';
+                            card.style.border = '';
+                        };
+                        card.ondrop = (e) => {
+                            e.preventDefault();
+                            card.style.transform = '';
+                            card.style.border = '';
+                            const draggedId = e.dataTransfer.getData('text/plain');
+                            app.handleMoveItem(draggedId, item.id);
+                            e.stopPropagation();
+                        };
+                    }
+
                     let icon = 'fa-file-lines';
                     let colorStyle = '';
 
@@ -1122,11 +1152,53 @@
                     div.className = `tree-item ${this.state.currentFolder === f.id ? 'active' : ''}`;
                     div.innerHTML = `<i class="fas fa-folder" style="color: var(--folder-${f.color})"></i> ${f.name}`;
                     div.onclick = () => this.navigateTo(f.id);
+
+                    div.ondragover = (e) => {
+                        e.preventDefault();
+                        div.style.background = 'rgba(255, 255, 255, 0.2)';
+                    };
+                    div.ondragleave = (e) => {
+                        div.style.background = '';
+                    };
+                    div.ondrop = (e) => {
+                        e.preventDefault();
+                        div.style.background = '';
+                        const draggedId = e.dataTransfer.getData('text/plain');
+                        app.handleMoveItem(draggedId, f.id);
+                        e.stopPropagation();
+                    };
+
                     container.appendChild(div);
                 });
             },
 
             // --- Handlers ---
+            handleMoveItem(itemId, targetFolderId) {
+                if (!itemId || !targetFolderId) return;
+                if (itemId === targetFolderId) return; // Cannot move into itself
+
+                const item = this.state.items.find(i => i.id === itemId);
+                if (!item) return;
+
+                // Prevent moving a folder into its own children
+                let currTarget = this.state.items.find(i => i.id === targetFolderId);
+                while (currTarget && currTarget.id !== 'root') {
+                    if (currTarget.id === itemId) {
+                        this.showToast('無法將資料夾移動到其子資料夾中');
+                        return;
+                    }
+                    currTarget = this.state.items.find(i => i.id === currTarget.parentId);
+                }
+
+                if (item.parentId === targetFolderId) return; // Already there
+
+                item.parentId = targetFolderId;
+                item.updatedAt = new Date();
+                this.saveData();
+                this.render();
+                this.showToast('已移動項目');
+            },
+
             navigateTo(folderId) {
                 this.state.currentFolder = folderId;
                 this.state.searchQuery = '';
