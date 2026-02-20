@@ -616,14 +616,12 @@
                 <button onclick="document.execCommand('strikeThrough')" title="刪除線"><i
                         class="fas fa-strikethrough"></i></button>
                 <span style="border-left:1px solid rgba(255,255,255,0.2); height:18px;"></span>
-                <button onclick="document.execCommand('formatBlock', false, 'h2')" title="標題"><i
-                        class="fas fa-heading"></i></button>
+                <button onclick="app.toggleHeading()" title="標題 (H2 ↔ 正文)"><i class="fas fa-heading"></i></button>
                 <button onclick="document.execCommand('insertUnorderedList')" title="無序列表"><i
                         class="fas fa-list-ul"></i></button>
                 <button onclick="document.execCommand('insertOrderedList')" title="有序列表"><i
                         class="fas fa-list-ol"></i></button>
-                <button onclick="document.execCommand('formatBlock', false, 'blockquote')" title="引用"><i
-                        class="fas fa-quote-left"></i></button>
+                <button onclick="app.toggleBlockquote()" title="引用 (切換)"><i class="fas fa-quote-left"></i></button>
                 <button onclick="document.execCommand('insertHorizontalRule')" title="分隔線"><i
                         class="fas fa-minus"></i></button>
                 <button onclick="document.execCommand('createLink', false, prompt('輸入連結 URL:'))" title="連結"><i
@@ -1416,8 +1414,12 @@
                         return await this.createItem(fileItem);
                     }
                 } else {
-                    // No Dropbox available, just create a Notion metadata entry
-                    console.warn("No Dropbox token available for file upload. Creating metadata-only entry in Notion.");
+                    // Dropbox not connected - prompt user to connect
+                    if (confirm('上傳檔案需要連接 Dropbox 來儲存實際檔案\n是否前往 Dropbox 登入？\n\n(選「取消」則僅建立 Notion 記錄不含檔案)')) {
+                        app.providers.dropbox.login();
+                        return fileItem; // Will need to re-upload after login
+                    }
+                    // Create metadata-only entry in Notion
                     return await this.createItem(fileItem);
                 }
             }
@@ -1949,6 +1951,36 @@
                 });
             },
 
+            // Toggle heading: if current block is h2, switch to p; otherwise switch to h2
+            toggleHeading() {
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const node = sel.anchorNode;
+                    const block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+                    const closestBlock = block.closest('h2, h1, h3');
+                    if (closestBlock) {
+                        document.execCommand('formatBlock', false, 'p');
+                    } else {
+                        document.execCommand('formatBlock', false, 'h2');
+                    }
+                }
+            },
+
+            // Toggle blockquote
+            toggleBlockquote() {
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const node = sel.anchorNode;
+                    const block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+                    const closestBlock = block.closest('blockquote');
+                    if (closestBlock) {
+                        document.execCommand('formatBlock', false, 'p');
+                    } else {
+                        document.execCommand('formatBlock', false, 'blockquote');
+                    }
+                }
+            },
+
             // --- Editor ---
             openEditor(id) {
                 const item = this.state.items.find(i => i.id === id);
@@ -2027,15 +2059,18 @@
                 item.updatedAt = new Date();
                 item.relatedFileIds = this.state.editingRelatedIds || [];
 
-                // Sync to Notion if using Notion provider
-                if (this.storage.saveJournalContent) {
-                    this.showToast('正在同步日誌到 Notion...');
-                    await this.storage.saveJournalContent(item);
-                }
-
-                // Sync relations to Notion
-                if (this.storage.updateJournalRelation && item.relatedFileIds.length > 0) {
-                    await this.storage.updateJournalRelation(item);
+                // Sync to Notion (wrapped in try/catch so editor always closes)
+                try {
+                    if (this.storage.saveJournalContent) {
+                        this.showToast('正在同步日誌到 Notion...');
+                        await this.storage.saveJournalContent(item);
+                    }
+                    if (this.storage.updateJournalRelation && item.relatedFileIds.length > 0) {
+                        await this.storage.updateJournalRelation(item);
+                    }
+                } catch (e) {
+                    console.error('Notion sync error in closeEditor:', e);
+                    this.showToast('同步失敗，但內容已本地儲存');
                 }
 
                 this.saveData();
@@ -2043,7 +2078,7 @@
                 this.state.editingRelatedIds = [];
                 document.getElementById('journal-modal').style.display = 'none';
                 this.render();
-                this.showToast('已儲存並同步');
+                this.showToast('已儲存');
             },
 
             // --- Context Menu Actions ---
