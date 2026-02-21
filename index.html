@@ -1205,8 +1205,34 @@
                     throw e;
                 }
             }
+            splitRichTextByLines(richText) {
+                const lines = [];
+                let currentLine = [];
 
-            // Convert HTML content to Notion blocks with rich formatting support
+                richText.forEach(segment => {
+                    const text = segment.text.content;
+                    const parts = text.split(/\r?\n/);
+
+                    parts.forEach((part, i) => {
+                        if (i > 0) {
+                            lines.push(currentLine);
+                            currentLine = [];
+                        }
+                        if (part || parts.length === 1) {
+                            currentLine.push({
+                                ...segment,
+                                text: { ...segment.text, content: part }
+                            });
+                        }
+                    });
+                });
+
+                if (currentLine.length > 0 || lines.length === 0) {
+                    lines.push(currentLine);
+                }
+                return lines;
+            }
+
             htmlToNotionBlocks(html) {
                 if (!html) return [];
                 const tempDiv = document.createElement('div');
@@ -1215,191 +1241,117 @@
 
                 const processNode = (node) => {
                     if (node.nodeType === Node.TEXT_NODE) {
-                        const rawText = node.textContent || '';
-                        const lines = rawText.split(/\r?\n/);
-                        lines.forEach(line => {
-                            const trimLine = line.trim();
-                            if (!trimLine) {
+                        const richText = this.extractRichText(node);
+                        const lines = this.splitRichTextByLines(richText);
+
+                        lines.forEach(lineRichText => {
+                            if (lineRichText.length === 0) {
                                 blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
                                 return;
                             }
+                            const firstSeg = lineRichText[0];
+                            const firstText = firstSeg.text.content;
+                            let blockType = 'paragraph';
 
-                            if (/^\s*#\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*#\s+/, '') } }] } });
-                            } else if (/^\s*##\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*##\s+/, '') } }] } });
-                            } else if (/^\s*###\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*###\s+/, '') } }] } });
-                            } else if (/^\s*>\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*>\s+/, '') } }] } });
-                            } else if (/^\s*---/.test(line)) {
+                            if (/^\s*#\s+/.test(firstText)) {
+                                blockType = 'heading_1';
+                                firstSeg.text.content = firstText.replace(/^\s*#\s+/, '');
+                            } else if (/^\s*##\s+/.test(firstText)) {
+                                blockType = 'heading_2';
+                                firstSeg.text.content = firstText.replace(/^\s*##\s+/, '');
+                            } else if (/^\s*###\s+/.test(firstText)) {
+                                blockType = 'heading_3';
+                                firstSeg.text.content = firstText.replace(/^\s*###\s+/, '');
+                            } else if (/^\s*>\s+/.test(firstText)) {
+                                blockType = 'quote';
+                                firstSeg.text.content = firstText.replace(/^\s*>\s+/, '');
+                            } else if (/^\s*[-\*]\s+/.test(firstText)) {
+                                blockType = 'bulleted_list_item';
+                                firstSeg.text.content = firstText.replace(/^\s*[-\*]\s+/, '');
+                            } else if (/^\s*\[\s*\]\s+/.test(firstText)) {
+                                firstSeg.text.content = firstText.replace(/^\s*\[\s*\]\s+/, '');
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": lineRichText.filter(s => s.text.content) } });
+                                return;
+                            } else if (/^\s*\[[xX]\]\s+/.test(firstText)) {
+                                firstSeg.text.content = firstText.replace(/^\s*\[[xX]\]\s+/, '');
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": lineRichText.filter(s => s.text.content) } });
+                                return;
+                            } else if (/^\s*---/.test(firstText)) {
                                 blocks.push({ "object": "block", "type": "divider", "divider": {} });
-                            } else if (/^\s*[-\*]\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*[-\*]\s+/, '') } }] } });
-                            } else if (/^\s*\[\s*\]\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*\[\s*\]\s+/, '') } }] } });
-                            } else if (/^\s*\[[xX]\]\s+/.test(line)) {
-                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*\[[xX]\]\s+/, '') } }] } });
-                            } else {
-                                blocks.push({
-                                    "object": "block", "type": "paragraph",
-                                    "paragraph": { "rich_text": [{ "type": "text", "text": { "content": trimLine } }] }
-                                });
+                                return;
                             }
+
+                            if (!firstSeg.text.content) lineRichText.shift();
+                            blocks.push({ "object": "block", "type": blockType, [blockType]: { "rich_text": lineRichText } });
                         });
                         return;
                     }
                     if (node.nodeType !== Node.ELEMENT_NODE) return;
 
                     const tag = node.tagName.toLowerCase();
-                    const innerText = (node.innerText || '').substring(0, 2000);
-
-                    if (tag === 'h1') {
-                        blocks.push({
-                            "object": "block", "type": "heading_1",
-                            "heading_1": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
-                        });
-                    } else if (tag === 'h2') {
-                        blocks.push({
-                            "object": "block", "type": "heading_2",
-                            "heading_2": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
-                        });
-                    } else if (tag === 'h3' || tag === 'h4' || tag === 'h5' || tag === 'h6') {
-                        blocks.push({
-                            "object": "block", "type": "heading_3",
-                            "heading_3": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
-                        });
+                    if (tag === 'h1' || tag === 'h2' || tag === 'h3') {
+                        const type = tag === 'h1' ? 'heading_1' : (tag === 'h2' ? 'heading_2' : 'heading_3');
+                        blocks.push({ "object": "block", "type": type, [type]: { "rich_text": this.extractRichText(node) } });
                     } else if (tag === 'blockquote') {
-                        blocks.push({
-                            "object": "block", "type": "quote",
-                            "quote": { "rich_text": [{ "type": "text", "text": { "content": innerText } }] }
-                        });
-                    } else if (tag === 'ul') {
+                        blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": this.extractRichText(node) } });
+                    } else if (tag === 'ul' || tag === 'ol') {
+                        const type = tag === 'ul' ? 'bulleted_list_item' : 'numbered_list_item';
                         node.querySelectorAll(':scope > li').forEach(li => {
-                            blocks.push({
-                                "object": "block", "type": "bulleted_list_item",
-                                "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": (li.innerText || '').substring(0, 2000) } }] }
-                            });
-                        });
-                    } else if (tag === 'ol') {
-                        node.querySelectorAll(':scope > li').forEach(li => {
-                            blocks.push({
-                                "object": "block", "type": "numbered_list_item",
-                                "numbered_list_item": { "rich_text": [{ "type": "text", "text": { "content": (li.innerText || '').substring(0, 2000) } }] }
-                            });
+                            blocks.push({ "object": "block", "type": type, [type]: { "rich_text": this.extractRichText(li) } });
                         });
                     } else if (tag === 'hr') {
                         blocks.push({ "object": "block", "type": "divider", "divider": {} });
                     } else if (tag === 'p' || tag === 'div') {
-                        // For paragraphs or divs, we might have multiple lines pasted as one block.
-                        // We split by newline and process each line as a potential Markdown block.
-                        const rawText = node.innerText || '';
-                        const lines = rawText.split(/\r?\n/);
-
-                        if (lines.length > 1) {
-                            lines.forEach(line => {
-                                const trimLine = line.trim();
-                                if (!trimLine) {
-                                    blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
-                                    return;
-                                }
-
-                                if (trimLine.startsWith('# ')) {
-                                    blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
-                                } else if (trimLine.startsWith('## ')) {
-                                    blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(3) } }] } });
-                                } else if (trimLine.startsWith('### ')) {
-                                    blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
-                                } else if (trimLine.startsWith('> ')) {
-                                    blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
-                                } else if (trimLine.startsWith('---')) {
-                                    blocks.push({ "object": "block", "type": "divider", "divider": {} });
-                                } else if (trimLine.startsWith('- ') || trimLine.startsWith('* ')) {
-                                    blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
-                                } else if (trimLine.startsWith('[ ] ')) {
-                                    blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
-                                } else if (trimLine.startsWith('[x] ') || trimLine.startsWith('[X] ')) {
-                                    blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
-                                } else {
-                                    blocks.push({
-                                        "object": "block", "type": "paragraph",
-                                        "paragraph": { "rich_text": [{ "type": "text", "text": { "content": trimLine } }] }
-                                    });
-                                }
-                            });
-                        } else {
-                            const text = rawText.trim();
-                            if (!text) {
+                        const richText = this.extractRichText(node);
+                        const lines = this.splitRichTextByLines(richText);
+                        lines.forEach(lineRichText => {
+                            if (lineRichText.length === 0) {
                                 blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
-                            } else if (text.startsWith('# ')) {
-                                blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                            } else if (text.startsWith('## ')) {
-                                blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": text.substring(3) } }] } });
-                            } else if (text.startsWith('### ')) {
-                                blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
-                            } else if (text.startsWith('> ')) {
-                                blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                            } else if (text.startsWith('---')) {
-                                blocks.push({ "object": "block", "type": "divider", "divider": {} });
-                            } else if (text.startsWith('- ') || text.startsWith('* ')) {
-                                blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                            } else if (text.startsWith('[ ] ')) {
-                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
-                            } else if (text.startsWith('[x] ') || text.startsWith('[X] ')) {
-                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
-                            } else {
-                                const richText = this.extractRichText(node);
-                                if (richText.length > 0) {
-                                    blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": richText } });
-                                }
+                                return;
                             }
-                        }
+                            const firstSeg = lineRichText[0];
+                            const firstText = firstSeg.text.content;
+                            let blockType = 'paragraph';
+
+                            if (/^\s*#\s+/.test(firstText)) {
+                                blockType = 'heading_1';
+                                firstSeg.text.content = firstText.replace(/^\s*#\s+/, '');
+                            } else if (/^\s*##\s+/.test(firstText)) {
+                                blockType = 'heading_2';
+                                firstSeg.text.content = firstText.replace(/^\s*##\s+/, '');
+                            } else if (/^\s*###\s+/.test(firstText)) {
+                                blockType = 'heading_3';
+                                firstSeg.text.content = firstText.replace(/^\s*###\s+/, '');
+                            } else if (/^\s*>\s+/.test(firstText)) {
+                                blockType = 'quote';
+                                firstSeg.text.content = firstText.replace(/^\s*>\s+/, '');
+                            } else if (/^\s*[-\*]\s+/.test(firstText)) {
+                                blockType = 'bulleted_list_item';
+                                firstSeg.text.content = firstText.replace(/^\s*[-\*]\s+/, '');
+                            } else if (/^\s*\[\s*\]\s+/.test(firstText)) {
+                                firstSeg.text.content = firstText.replace(/^\s*\[\s*\]\s+/, '');
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": lineRichText.filter(s => s.text.content) } });
+                                return;
+                            } else if (/^\s*\[[xX]\]\s+/.test(firstText)) {
+                                firstSeg.text.content = firstText.replace(/^\s*\[[xX]\]\s+/, '');
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": lineRichText.filter(s => s.text.content) } });
+                                return;
+                            } else if (/^\s*---/.test(firstText)) {
+                                blocks.push({ "object": "block", "type": "divider", "divider": {} });
+                                return;
+                            }
+
+                            if (!firstSeg.text.content) lineRichText.shift();
+                            blocks.push({ "object": "block", "type": blockType, [blockType]: { "rich_text": lineRichText } });
+                        });
                     } else if (tag === 'br') {
-                        // Skip standalone <br>
+                        // Skip
                     } else {
-                        // Fallback: recurse into children
                         node.childNodes.forEach(child => processNode(child));
                     }
                 };
 
                 tempDiv.childNodes.forEach(child => processNode(child));
-
-                // If no blocks were created, treat the whole thing as a series of markdown blocks or paragraphs
-                if (blocks.length === 0 && tempDiv.innerText.trim()) {
-                    const rawText = tempDiv.innerText.trim();
-                    const lines = rawText.split(/\r?\n/);
-                    lines.forEach(line => {
-                        const trimLine = line.trim();
-                        if (!trimLine) {
-                            blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
-                            return;
-                        }
-
-                        if (/^\s*#\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*#\s+/, '') } }] } });
-                        } else if (/^\s*##\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*##\s+/, '') } }] } });
-                        } else if (/^\s*###\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*###\s+/, '') } }] } });
-                        } else if (/^\s*>\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*>\s+/, '') } }] } });
-                        } else if (/^\s*---/.test(line)) {
-                            blocks.push({ "object": "block", "type": "divider", "divider": {} });
-                        } else if (/^\s*[-\*]\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*[-\*]\s+/, '') } }] } });
-                        } else if (/^\s*\[\s*\]\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*\[\s*\]\s+/, '') } }] } });
-                        } else if (/^\s*\[[xX]\]\s+/.test(line)) {
-                            blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": line.replace(/^\s*\[[xX]\]\s+/, '') } }] } });
-                        } else {
-                            blocks.push({
-                                "object": "block", "type": "paragraph",
-                                "paragraph": { "rich_text": [{ "type": "text", "text": { "content": trimLine } }] }
-                            });
-                        }
-                    });
-                }
-
                 return blocks;
             }
 
@@ -2444,6 +2396,13 @@
                 document.getElementById('relation-picker-modal').style.display = 'none';
             },
 
+            cancelEditor() {
+                this.state.editingId = null;
+                this.state.editingRelatedIds = [];
+                document.getElementById('journal-modal').style.display = 'none';
+                this.showToast('已取消編輯');
+            },
+
             async closeEditor() {
                 const id = this.state.editingId;
                 const item = this.state.items.find(i => i.id === id);
@@ -2701,7 +2660,7 @@
                             if (e.target === m && m.style.display === 'flex') {
                                 // Specific logic per modal if needed
                                 if (m.id === 'journal-modal') {
-                                    this.closeEditor();
+                                    this.cancelEditor(); // Cancel, NOT save
                                 } else {
                                     m.style.display = 'none';
                                 }
