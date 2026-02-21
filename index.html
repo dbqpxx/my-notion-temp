@@ -2335,11 +2335,17 @@
                 container.innerHTML = '';
 
                 let type = item.fileType || '';
-                if ((!type || !type.includes('/')) && item.name) {
-                    const ext = item.name.split('.').pop().toLowerCase();
-                    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image/' + ext;
-                    else if (['mp4', 'webm', 'ogg'].includes(ext)) type = 'video/' + ext;
-                    else if (ext === 'pdf') type = 'application/pdf';
+                if ((!type || !type.includes('/'))) {
+                    // Try to infer from name, dropboxPath, or srcUrl
+                    let sourceForExt = item.name;
+                    if (!sourceForExt || !sourceForExt.includes('.')) {
+                        sourceForExt = item.dropboxPath || srcUrl || '';
+                    }
+                    const ext = sourceForExt.split('.').pop().toLowerCase().split('?')[0]; // strip query params
+
+                    if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) { type = 'image/' + ext; }
+                    else if (['mp4', 'webm', 'ogg'].includes(ext)) { type = 'video/' + ext; }
+                    else if (ext === 'pdf') { type = 'application/pdf'; }
                 }
 
                 if (type.startsWith('image/')) {
