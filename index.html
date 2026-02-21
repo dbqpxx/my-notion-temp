@@ -662,7 +662,9 @@
                 <span style="flex:1"></span>
                 <button onclick="app.closeEditor()"><i class="fas fa-check"></i> 儲存並關閉</button>
             </div>
-            <div id="editor-body" contenteditable="true" placeholder="開始輸入您的日誌..."></div>
+            <div id="editor-body" contenteditable="true" placeholder="開始輸入您的日誌..."
+                onpaste="event.preventDefault(); var t=event.clipboardData.getData('text/plain'); if(/[\n#>*_~\-]/.test(t)){document.execCommand('insertHTML',false,app.mdToHtml(t))}else{document.execCommand('insertText',false,t)}">
+            </div>
         </div>
     </div>
 
