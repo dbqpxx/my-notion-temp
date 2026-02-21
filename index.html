@@ -1262,22 +1262,30 @@
                 return blocks;
             }
 
-            // Extract rich text with bold/italic/strikethrough annotations
+            // Extract rich text with bold/italic/strikethrough annotations and handle line breaks
             extractRichText(node) {
                 const segments = [];
                 const walk = (el, annotations) => {
                     el.childNodes.forEach(child => {
                         if (child.nodeType === Node.TEXT_NODE) {
-                            const text = child.textContent;
+                            let text = child.textContent;
                             if (text) {
-                                segments.push({
-                                    "type": "text",
-                                    "text": { "content": text.substring(0, 2000) },
-                                    "annotations": { ...annotations }
-                                });
+                                // Notion rich_text.text.content has a 2000 character limit
+                                while (text.length > 0) {
+                                    segments.push({
+                                        "type": "text",
+                                        "text": { "content": text.substring(0, 2000) },
+                                        "annotations": { ...annotations }
+                                    });
+                                    text = text.substring(2000);
+                                }
                             }
                         } else if (child.nodeType === Node.ELEMENT_NODE) {
                             const tag = child.tagName.toLowerCase();
+                            if (tag === 'br') {
+                                segments.push({ "type": "text", "text": { "content": "\n" } });
+                                return;
+                            }
                             const newAnno = { ...annotations };
                             if (tag === 'b' || tag === 'strong') newAnno.bold = true;
                             if (tag === 'i' || tag === 'em') newAnno.italic = true;
@@ -1298,12 +1306,37 @@
                 return segments;
             }
 
+            // Helper to fetch all blocks with pagination
+            async getAllBlocks(id) {
+                let allBlocks = [];
+                let cursor = undefined;
+                try {
+                    while (true) {
+                        const endpoint = `/blocks/${id}/children?page_size=100` + (cursor ? `&start_cursor=${cursor}` : '');
+                        const response = await this.notionRequest(endpoint, 'GET');
+                        if (response && response.results) {
+                            allBlocks = allBlocks.concat(response.results);
+                            if (response.has_more) {
+                                cursor = response.next_cursor;
+                            } else {
+                                break;
+                            }
+                        } else {
+                            break;
+                        }
+                    }
+                } catch (e) {
+                    console.error("Notion getAllBlocks error", e);
+                }
+                return allBlocks;
+            }
+
             // Save journal content to an existing Notion page as blocks
             async saveJournalContent(item) {
                 try {
                     if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
 
-                    // Update the title FIRST so the user sees the change in Notion immediately
+                    // Update the title FIRST
                     const titleProp = '名稱';
                     await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
                         properties: {
@@ -1311,28 +1344,30 @@
                         }
                     });
 
-                    // Then delete existing blocks in the page. 
-                    // Serializing this to avoid 429 Rate Limit errors from Notion Proxy.
-                    const existingBlocks = await this.notionRequest(`/blocks/${item.id}/children`, 'GET');
-                    if (existingBlocks && existingBlocks.results && existingBlocks.results.length > 0) {
-                        for (const block of existingBlocks.results) {
-                            try {
-                                await this.notionRequest(`/blocks/${block.id}`, 'DELETE');
-                            } catch (de) {
-                                console.warn("Failed to delete block during cleanup:", block.id, de);
-                            }
+                    // 1. Fetch ALL existing blocks to ensure complete cleanup
+                    const blocksToDelete = await this.getAllBlocks(item.id);
+                    if (blocksToDelete.length > 0) {
+                        // Delete in parallel chunks to speed up but avoid 429
+                        const delIds = blocksToDelete.map(b => b.id);
+                        for (let i = 0; i < delIds.length; i += 10) {
+                            const chunk = delIds.slice(i, i + 10);
+                            await Promise.all(chunk.map(id =>
+                                this.notionRequest(`/blocks/${id}`, 'DELETE').catch(err => console.error("Del Fail", id, err))
+                            ));
                         }
                     }
 
-                    // Then append new content blocks
-                    const blocks = this.htmlToNotionBlocks(item.content);
-                    if (blocks.length > 0) {
+                    // 2. Batch Append new content blocks (Notion limit 100 per call)
+                    const newBlocks = this.htmlToNotionBlocks(item.content);
+                    for (let i = 0; i < newBlocks.length; i += 100) {
+                        const chunk = newBlocks.slice(i, i + 100);
                         await this.notionRequest(`/blocks/${item.id}/children`, 'PATCH', {
-                            children: blocks
+                            children: chunk
                         });
                     }
                 } catch (e) {
                     console.error("Notion saveJournalContent error", e);
+                    throw e; // Re-throw so UI can catch and show failure
                 }
             }
 
@@ -1341,9 +1376,9 @@
                 try {
                     if (!id || id === 'root' || id.startsWith('nfm_')) return null;
 
-                    const response = await this.notionRequest(`/blocks/${id}/children`, 'GET');
-                    if (response && response.results) {
-                        return this.notionBlocksToHtml(response.results);
+                    const allBlocks = await this.getAllBlocks(id);
+                    if (allBlocks.length > 0) {
+                        return this.notionBlocksToHtml(allBlocks);
                     }
                     return '';
                 } catch (e) {
