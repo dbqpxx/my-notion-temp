@@ -1274,12 +1274,13 @@
                 try {
                     if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
 
-                    // First delete existing blocks in the page
+                    // First delete existing blocks in the page in parallel for speed
                     const existingBlocks = await this.notionRequest(`/blocks/${item.id}/children`, 'GET');
-                    if (existingBlocks && existingBlocks.results) {
-                        for (const block of existingBlocks.results) {
-                            await this.notionRequest(`/blocks/${block.id}`, 'DELETE');
-                        }
+                    if (existingBlocks && existingBlocks.results && existingBlocks.results.length > 0) {
+                        // Use Promise.all to delete blocks in parallel
+                        await Promise.all(existingBlocks.results.map(block =>
+                            this.notionRequest(`/blocks/${block.id}`, 'DELETE')
+                        ));
                     }
 
                     // Then append new content blocks
@@ -1956,9 +1957,20 @@
                 const sel = window.getSelection();
                 if (sel.rangeCount > 0) {
                     const node = sel.anchorNode;
-                    const block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-                    const closestBlock = block.closest('h2, h1, h3');
-                    if (closestBlock) {
+                    let block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+
+                    // Check if already in a heading
+                    let inHeading = false;
+                    let curr = block;
+                    while (curr && curr.id !== 'editor-body') {
+                        if (['H1', 'H2', 'H3'].includes(curr.tagName)) {
+                            inHeading = true;
+                            break;
+                        }
+                        curr = curr.parentElement;
+                    }
+
+                    if (inHeading) {
                         document.execCommand('formatBlock', false, 'p');
                     } else {
                         document.execCommand('formatBlock', false, 'h2');
@@ -1971,9 +1983,19 @@
                 const sel = window.getSelection();
                 if (sel.rangeCount > 0) {
                     const node = sel.anchorNode;
-                    const block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
-                    const closestBlock = block.closest('blockquote');
-                    if (closestBlock) {
+                    let block = node.nodeType === Node.TEXT_NODE ? node.parentElement : node;
+
+                    let inQuote = false;
+                    let curr = block;
+                    while (curr && curr.id !== 'editor-body') {
+                        if (curr.tagName === 'BLOCKQUOTE') {
+                            inQuote = true;
+                            break;
+                        }
+                        curr = curr.parentElement;
+                    }
+
+                    if (inQuote) {
                         document.execCommand('formatBlock', false, 'p');
                     } else {
                         document.execCommand('formatBlock', false, 'blockquote');
@@ -2053,6 +2075,11 @@
             async closeEditor() {
                 const id = this.state.editingId;
                 const item = this.state.items.find(i => i.id === id);
+                if (!item) {
+                    this.state.editingId = null;
+                    document.getElementById('journal-modal').style.display = 'none';
+                    return;
+                }
 
                 item.name = document.getElementById('editor-title').value || '無標題';
                 item.content = document.getElementById('editor-body').innerHTML;
