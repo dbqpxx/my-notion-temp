@@ -325,6 +325,8 @@
             gap: 15px;
             margin-bottom: 10px;
             opacity: 0.7;
+            flex-wrap: wrap;
+            /* Ensure buttons don't push off-screen */
         }
 
         .editor-toolbar button {
@@ -1205,23 +1207,45 @@
                     throw e;
                 }
             }
+            // Simple Markdown to HTML converter for live editing (v6)
+            mdToHtml(text) {
+                if (!text) return "";
+                let html = text
+                    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") // Escape
+                    .replace(/^#\s+(.*)$/gm, '<h1>$1</h1>')
+                    .replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
+                    .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
+                    .replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
+                    .replace(/^\s*[-\*]\s+(.*)$/gm, '<ul><li>$1</li></ul>')
+                    .replace(/^\s*(\d+)\.\s+(.*)$/gm, '<ol><li>$2</li></ol>')
+                    .replace(/---\r?\n/g, '<hr>')
+                    .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+                    .replace(/__(.*?)__/g, '<b>$1</b>')
+                    .replace(/\*(.*?)\*/g, '<i>$1</i>')
+                    .replace(/_(.*?)_/g, '<i>$1</i>')
+                    .replace(/~~(.*?)~~/g, '<strike>$1</strike>')
+                    .replace(/\[ \]\s+(.*)$/gm, '<div class="to-do-item"><input type="checkbox"> <span>$1</span></div>')
+                    .replace(/\[x\]\s+(.*)$/gm, '<div class="to-do-item"><input type="checkbox" checked> <span>$1</span></div>')
+                    .replace(/\r?\n/g, '<br>');
+
+                // Merge adjacent UL/OL/To-Do
+                html = html.replace(/<\/ul>\s*<ul>/g, '').replace(/<\/ol>\s*<ol>/g, '');
+                return html;
+            }
+
             splitRichTextByLines(richText) {
                 const lines = [];
                 let currentLine = [];
 
                 richText.forEach(segment => {
                     const content = segment.text.content;
-                    // Split by newline, but handle empty parts differently to ensure line count is correct
                     const parts = content.split(/\r?\n/);
 
                     parts.forEach((part, i) => {
                         if (i > 0) {
-                            // Newline encountered: push current line and start fresh
                             lines.push(currentLine);
                             currentLine = [];
                         }
-                        // Always push a segment if there's content OR it's a single part line
-                        // This ensures that " \n " results in two lines: [" "] and [" "]
                         if (part.length > 0 || parts.length === 1) {
                             currentLine.push({
                                 ...segment,
@@ -1231,7 +1255,6 @@
                     });
                 });
 
-                // End of segments: push the last line if it has content OR if we have no lines yet
                 if (currentLine.length > 0 || lines.length === 0) {
                     lines.push(currentLine);
                 }
@@ -2668,16 +2691,27 @@
                     const modal = e.target.closest('.modal');
                     if (modal && e.target === modal) {
                         if (modal.id === 'journal-modal') {
-                            this.cancelEditor();
+                            app.cancelEditor(); // Call app explicitly to ensure correct context (v6)
                         } else {
                             modal.style.display = 'none';
                         }
                     }
                 });
 
-                // Markdown Shortcuts for Editor
+                // Markdown Paste & Shortcuts for Editor (v6)
                 const editorBody = document.getElementById('editor-body');
                 if (editorBody) {
+                    editorBody.addEventListener('paste', (e) => {
+                        e.preventDefault();
+                        const text = e.clipboardData.getData('text/plain');
+                        // If it has markdown characters or multiple lines, convert to HTML
+                        if (/^[#>\-\*]|\r?\n|\*\*|__|\*|_|~~/.test(text)) {
+                            const html = app.mdToHtml(text);
+                            document.execCommand('insertHTML', false, html);
+                        } else {
+                            document.execCommand('insertText', false, text);
+                        }
+                    });
                     editorBody.addEventListener('keydown', (e) => this.handleMarkdownShortcuts(e));
                 }
             },
