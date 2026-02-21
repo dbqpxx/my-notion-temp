@@ -630,7 +630,7 @@
     </div>
 
     <!-- Journal Modal -->
-    <div id="journal-modal" class="modal">
+    <div id="journal-modal" class="modal" onclick="if(event.target===this) app.cancelEditor()">
         <div class="modal-content glass-panel">
             <div class="editor-header">
                 <input type="text" id="editor-title" class="editor-title" placeholder="無標題">
@@ -1207,31 +1207,6 @@
                     throw e;
                 }
             }
-            // Simple Markdown to HTML converter for live editing (v6)
-            mdToHtml(text) {
-                if (!text) return "";
-                let html = text
-                    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") // Escape
-                    .replace(/^#\s+(.*)$/gm, '<h1>$1</h1>')
-                    .replace(/^##\s+(.*)$/gm, '<h2>$1</h2>')
-                    .replace(/^###\s+(.*)$/gm, '<h3>$1</h3>')
-                    .replace(/^>\s+(.*)$/gm, '<blockquote>$1</blockquote>')
-                    .replace(/^\s*[-\*]\s+(.*)$/gm, '<ul><li>$1</li></ul>')
-                    .replace(/^\s*(\d+)\.\s+(.*)$/gm, '<ol><li>$2</li></ol>')
-                    .replace(/---\r?\n/g, '<hr>')
-                    .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
-                    .replace(/__(.*?)__/g, '<b>$1</b>')
-                    .replace(/\*(.*?)\*/g, '<i>$1</i>')
-                    .replace(/_(.*?)_/g, '<i>$1</i>')
-                    .replace(/~~(.*?)~~/g, '<strike>$1</strike>')
-                    .replace(/\[ \]\s+(.*)$/gm, '<div class="to-do-item"><input type="checkbox"> <span>$1</span></div>')
-                    .replace(/\[x\]\s+(.*)$/gm, '<div class="to-do-item"><input type="checkbox" checked> <span>$1</span></div>')
-                    .replace(/\r?\n/g, '<br>');
-
-                // Merge adjacent UL/OL/To-Do
-                html = html.replace(/<\/ul>\s*<ul>/g, '').replace(/<\/ol>\s*<ol>/g, '');
-                return html;
-            }
 
             splitRichTextByLines(richText) {
                 const lines = [];
@@ -1298,7 +1273,7 @@
                                 blockType = 'bulleted_list_item';
                                 firstSeg.text.content = firstText.replace(/^\s*[-\*]\s+/, '');
                             } else if (/^\s*\[\s*\]\s+/.test(firstText)) {
-                                firstSeg.text.content = firstText.text.content.replace(/^\s*\[\s*\]\s+/, '');
+                                firstSeg.text.content = firstText.replace(/^\s*\[\s*\]\s+/, '');
                                 blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": lineRichText.filter(s => s.text.content) } });
                                 return;
                             } else if (/^\s*\[[xX]\]\s+/.test(firstText)) {
@@ -2662,6 +2637,33 @@
             search(val) {
                 this.state.searchQuery = val;
                 this.render();
+            },
+
+            // Simple Markdown to HTML converter for live editing (v6)
+            mdToHtml(text) {
+                if (!text) return "";
+                const lines = text.split(/\r?\n/);
+                let html = lines.map(line => {
+                    if (/^###\s+/.test(line)) return '<h3>' + line.replace(/^###\s+/, '') + '</h3>';
+                    if (/^##\s+/.test(line)) return '<h2>' + line.replace(/^##\s+/, '') + '</h2>';
+                    if (/^#\s+/.test(line)) return '<h1>' + line.replace(/^#\s+/, '') + '</h1>';
+                    if (/^>\s+/.test(line)) return '<blockquote>' + line.replace(/^>\s+/, '') + '</blockquote>';
+                    if (/^\s*[-*]\s+/.test(line)) return '<li>' + line.replace(/^\s*[-*]\s+/, '') + '</li>';
+                    if (/^\s*\d+\.\s+/.test(line)) return '<li>' + line.replace(/^\s*\d+\.\s+/, '') + '</li>';
+                    if (/^\s*\[x\]\s+/i.test(line)) return '<div class="to-do-item"><input type="checkbox" checked> <span>' + line.replace(/^\s*\[x\]\s+/i, '') + '</span></div>';
+                    if (/^\s*\[\s*\]\s+/.test(line)) return '<div class="to-do-item"><input type="checkbox"> <span>' + line.replace(/^\s*\[\s*\]\s+/, '') + '</span></div>';
+                    if (/^---$/.test(line.trim())) return '<hr>';
+                    if (line.trim() === '') return '<p><br></p>';
+                    return '<p>' + line + '</p>';
+                }).join('');
+                html = html
+                    .replace(/\*\*(.*?)\*\*/g, '<b>$1</b>')
+                    .replace(/__(.*?)__/g, '<b>$1</b>')
+                    .replace(/\*(.*?)\*/g, '<i>$1</i>')
+                    .replace(/_(.*?)_/g, '<i>$1</i>')
+                    .replace(/~~(.*?)~~/g, '<s>$1</s>');
+                html = html.replace(/(<li>.*?<\/li>)+/g, '<ul>$&</ul>');
+                return html;
             },
 
             setupEventListeners() {
