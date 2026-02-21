@@ -2453,6 +2453,58 @@
                     dropZone.style.display = 'none';
                     this.handleFileUpload(e.dataTransfer.files);
                 });
+
+                // Markdown Shortcuts for Editor
+                const editorBody = document.getElementById('editor-body');
+                if (editorBody) {
+                    editorBody.addEventListener('keydown', (e) => this.handleMarkdownShortcuts(e));
+                }
+            },
+            handleMarkdownShortcuts(e) {
+                if (e.key !== ' ') return;
+
+                const sel = window.getSelection();
+                if (sel.rangeCount > 0) {
+                    const range = sel.getRangeAt(0);
+                    const node = range.startContainer;
+
+                    if (node.nodeType === Node.TEXT_NODE) {
+                        const text = node.textContent;
+                        const pos = range.startOffset;
+                        const line = text.substring(0, pos).trim();
+
+                        let command = null;
+                        if (line === '#') command = 'H2';
+                        else if (line === '-' || line === '*') command = 'UL';
+                        else if (line === '1.') command = 'OL';
+                        else if (line === '>') command = 'Quote';
+                        else if (line === '---') command = 'HR';
+
+                        if (command) {
+                            e.preventDefault();
+                            // Clear the trigger text
+                            node.textContent = text.substring(pos);
+
+                            // Re-position cursor to start of node before formatting
+                            const newRange = document.createRange();
+                            newRange.setStart(node, 0);
+                            newRange.collapse(true);
+                            sel.removeAllRanges();
+                            sel.addRange(newRange);
+
+                            // Trigger formatting
+                            if (command === 'H2') this.toggleHeading();
+                            else if (command === 'UL') document.execCommand('insertUnorderedList');
+                            else if (command === 'OL') document.execCommand('insertOrderedList');
+                            else if (command === 'Quote') this.toggleBlockquote();
+                            else if (command === 'HR') {
+                                document.execCommand('insertHorizontalRule');
+                                // Insert a new paragraph after HR to keep typing
+                                document.execCommand('formatBlock', false, 'p');
+                            }
+                        }
+                    }
+                }
             },
 
             showToast(msg) {
