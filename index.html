@@ -1303,7 +1303,15 @@
                 try {
                     if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
 
-                    // First delete existing blocks in the page. 
+                    // Update the title FIRST so the user sees the change in Notion immediately
+                    const titleProp = '名稱';
+                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                        properties: {
+                            [titleProp]: { "title": [{ "text": { "content": item.name } }] }
+                        }
+                    });
+
+                    // Then delete existing blocks in the page. 
                     // Serializing this to avoid 429 Rate Limit errors from Notion Proxy.
                     const existingBlocks = await this.notionRequest(`/blocks/${item.id}/children`, 'GET');
                     if (existingBlocks && existingBlocks.results && existingBlocks.results.length > 0) {
@@ -1312,7 +1320,6 @@
                                 await this.notionRequest(`/blocks/${block.id}`, 'DELETE');
                             } catch (de) {
                                 console.warn("Failed to delete block during cleanup:", block.id, de);
-                                // Continue to ensure we try to delete as many as possible
                             }
                         }
                     }
@@ -1324,14 +1331,6 @@
                             children: blocks
                         });
                     }
-
-                    // Also update the title
-                    const titleProp = '名稱';
-                    await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
-                        properties: {
-                            [titleProp]: { "title": [{ "text": { "content": item.name } }] }
-                        }
-                    });
                 } catch (e) {
                     console.error("Notion saveJournalContent error", e);
                 }
@@ -1432,13 +1431,16 @@
                     if (item.id === 'root' || item.id.startsWith('nfm_')) return;
 
                     const properties = {};
+                    const isJournal = item.type === 'journal';
+                    const relationProp = isJournal ? "關聯檔案" : "上層資料夾";
+
                     if (item.parentId && item.parentId !== 'root' && !item.parentId.startsWith('nfm_')) {
-                        properties["上層資料夾"] = {
+                        properties[relationProp] = {
                             "relation": [{ "id": item.parentId }]
                         };
                     } else {
                         // Moving to root = clear the relation
-                        properties["上層資料夾"] = {
+                        properties[relationProp] = {
                             "relation": []
                         };
                     }
@@ -2204,26 +2206,27 @@
                 item.updatedAt = new Date();
                 item.relatedFileIds = this.state.editingRelatedIds || [];
 
-                // Sync to Notion (wrapped in try/catch so editor always closes)
-                try {
-                    if (this.storage.saveJournalContent) {
-                        this.showToast('正在同步日誌到 Notion...');
-                        await this.storage.saveJournalContent(item);
-                    }
-                    if (this.storage.updateJournalRelation && item.relatedFileIds.length > 0) {
-                        await this.storage.updateJournalRelation(item);
-                    }
-                } catch (e) {
-                    console.error('Notion sync error in closeEditor:', e);
-                    this.showToast('同步失敗，但內容已本地儲存');
-                }
-
+                // Local save and UI feedback first for better responsiveness
                 this.saveData();
                 this.state.editingId = null;
                 this.state.editingRelatedIds = [];
                 document.getElementById('journal-modal').style.display = 'none';
                 this.render();
-                this.showToast('已儲存');
+                this.showToast('正同步到 Notion...');
+
+                // Background Sync to Notion
+                try {
+                    if (this.storage.saveJournalContent) {
+                        await this.storage.saveJournalContent(item);
+                    }
+                    if (this.storage.updateJournalRelation && item.relatedFileIds.length > 0) {
+                        await this.storage.updateJournalRelation(item);
+                    }
+                    this.showToast('同步完成');
+                } catch (e) {
+                    console.error('Notion sync error in closeEditor:', e);
+                    this.showToast('同步失敗，但內容已本地儲存');
+                }
             },
 
             // --- Context Menu Actions ---
