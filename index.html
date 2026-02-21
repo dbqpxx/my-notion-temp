@@ -1303,6 +1303,76 @@
                 }
             }
 
+            // Fetch journal content and convert to HTML
+            async getJournalContent(id) {
+                try {
+                    if (!id || id === 'root' || id.startsWith('nfm_')) return null;
+
+                    const response = await this.notionRequest(`/blocks/${id}/children`, 'GET');
+                    if (response && response.results) {
+                        return this.notionBlocksToHtml(response.results);
+                    }
+                    return '';
+                } catch (e) {
+                    console.error("Notion getJournalContent error", e);
+                    return null;
+                }
+            }
+
+            // Convert Notion blocks back to HTML for the editor
+            notionBlocksToHtml(blocks) {
+                let html = '';
+                blocks.forEach(block => {
+                    const type = block.type;
+                    const content = block[type];
+                    if (!content) return;
+
+                    // Specific handling for divider which has no rich_text
+                    if (type === 'divider') {
+                        html += '<hr>';
+                        return;
+                    }
+
+                    if (!content.rich_text) return;
+                    const textHtml = this.richTextToHtml(content.rich_text);
+
+                    switch (type) {
+                        case 'paragraph':
+                            html += `<p>${textHtml}</p>`;
+                            break;
+                        case 'heading_2':
+                            html += `<h2>${textHtml}</h2>`;
+                            break;
+                        case 'bulleted_list_item':
+                            html += `<ul><li>${textHtml}</li></ul>`;
+                            break;
+                        case 'numbered_list_item':
+                            html += `<ol><li>${textHtml}</li></ol>`;
+                            break;
+                        case 'quote':
+                            html += `<blockquote>${textHtml}</blockquote>`;
+                            break;
+                    }
+                });
+
+                // Post-process to merge consecutive <ul>/<ol> items
+                html = html.replace(/<\/ul><ul>/g, '').replace(/<\/ol><ol>/g, '');
+                return html;
+            }
+
+            richTextToHtml(richText) {
+                if (!richText) return '';
+                return richText.map(t => {
+                    let text = t.text.content;
+                    const ann = t.annotations;
+                    if (ann.bold) text = `<strong>${text}</strong>`;
+                    if (ann.italic) text = `<em>${text}</em>`;
+                    if (ann.strikethrough) text = `<s>${text}</s>`;
+                    if (t.text.link) text = `<a href="${t.text.link.url}">${text}</a>`;
+                    return text;
+                }).join('');
+            }
+
             async updateItem(item) {
                 try {
                     if (item.id === 'root' || item.id.startsWith('nfm_')) return; // Skip local/temp items
@@ -1824,11 +1894,11 @@
                 this.render();
             },
 
-            handleItemClick(item) {
+            async handleItemClick(item) {
                 if (item.type === 'folder') {
                     this.navigateTo(item.id);
                 } else if (item.type === 'journal') {
-                    this.openEditor(item.id);
+                    await this.openEditor(item.id);
                 } else {
                     // File preview
                     if (item.fileData) {
@@ -2004,11 +2074,25 @@
             },
 
             // --- Editor ---
-            openEditor(id) {
+            async openEditor(id) {
                 const item = this.state.items.find(i => i.id === id);
+                if (!item) return;
+
                 this.state.editingId = id;
                 this.state.editingRelatedIds = item.relatedFileIds ? [...item.relatedFileIds] : [];
                 document.getElementById('editor-title').value = item.name;
+
+                // Fetch content from Notion if using Notion provider
+                // We check if item.id is a UUID (Notion style) rather than nfm_ local id
+                const isNotionID = item.id.length > 20 && !item.id.startsWith('nfm_');
+                if (this.storage.getJournalContent && isNotionID) {
+                    this.showToast('正在載入內容...');
+                    const content = await this.storage.getJournalContent(item.id);
+                    if (content !== null) {
+                        item.content = content;
+                    }
+                }
+
                 document.getElementById('editor-body').innerHTML = item.content || '';
                 document.getElementById('editor-meta').innerText = `最後更新: ${new Date(item.updatedAt || item.createdAt).toLocaleString()}`;
 
