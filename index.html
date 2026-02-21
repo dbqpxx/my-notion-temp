@@ -1189,8 +1189,24 @@
                             let dropboxPath = undefined;
                             if (props['附件'] && props['附件'].files && props['附件'].files.length > 0) {
                                 const fileObj = props['附件'].files[0];
-                                if (fileObj.type === 'external' && fileObj.external.url.startsWith('https://nfm-dropbox.local')) {
-                                    dropboxPath = decodeURI(fileObj.external.url.replace('https://nfm-dropbox.local', ''));
+                                if (fileObj.type === 'external') {
+                                    const url = fileObj.external.url;
+                                    if (url.startsWith('https://nfm-dropbox.local')) {
+                                        dropboxPath = decodeURI(url.replace('https://nfm-dropbox.local', ''));
+                                    } else if (url.startsWith('https://www.dropbox.com/home')) {
+                                        try {
+                                            const urlObj = new URL(url);
+                                            const folder = decodeURI(urlObj.pathname.replace('/home', ''));
+                                            const preview = urlObj.searchParams.get('preview');
+                                            if (preview) {
+                                                dropboxPath = folder.endsWith('/') ? folder + preview : folder + '/' + preview;
+                                            } else {
+                                                dropboxPath = folder;
+                                            }
+                                        } catch (e) {
+                                            dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                        }
+                                    }
                                 }
                             }
 
@@ -1236,7 +1252,18 @@
                                     if (url.startsWith('https://nfm-dropbox.local')) {
                                         dropboxPath = decodeURI(url.replace('https://nfm-dropbox.local', ''));
                                     } else if (url.startsWith('https://www.dropbox.com/home')) {
-                                        dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', ''));
+                                        try {
+                                            const urlObj = new URL(url);
+                                            const folder = decodeURI(urlObj.pathname.replace('/home', ''));
+                                            const preview = urlObj.searchParams.get('preview');
+                                            if (preview) {
+                                                dropboxPath = folder.endsWith('/') ? folder + preview : folder + '/' + preview;
+                                            } else {
+                                                dropboxPath = folder;
+                                            }
+                                        } catch (e) {
+                                            dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                        }
                                     }
                                 }
                             }
@@ -1859,11 +1886,16 @@
 
                         // Store the Dropbox URL in 附件 (Files & Media) if available
                         if (processedItem.dropboxPath) {
+                            const parts = processedItem.dropboxPath.split('/');
+                            const filename = parts.pop();
+                            const folderPath = parts.join('/');
+                            const dropboxHomeUrl = `https://www.dropbox.com/home${encodeURI(folderPath)}?preview=${encodeURIComponent(filename)}`;
+
                             properties["附件"] = {
                                 "files": [{
                                     "name": fileItem.name,
                                     "type": "external",
-                                    "external": { "url": "https://www.dropbox.com/home" + encodeURI(processedItem.dropboxPath) }
+                                    "external": { "url": dropboxHomeUrl }
                                 }]
                             };
                         }
