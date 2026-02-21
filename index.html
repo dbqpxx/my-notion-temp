@@ -2346,6 +2346,7 @@
                     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) { type = 'image/' + ext; }
                     else if (['mp4', 'webm', 'ogg'].includes(ext)) { type = 'video/' + ext; }
                     else if (ext === 'pdf') { type = 'application/pdf'; }
+                    else if (['doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(ext)) { type = 'application/office'; }
                 }
 
                 if (type.startsWith('image/')) {
@@ -2354,14 +2355,14 @@
                 } else if (type.startsWith('video/')) {
                     container.innerHTML = `<video src="${srcUrl}" controls autoplay style="max-width:100%; max-height:100%; object-fit:contain;"></video>`;
                     modal.style.display = 'flex';
-                } else if (type === 'application/pdf') {
-                    // Dropbox Temporary Links force downloads for PDFs. 
+                } else if (type === 'application/pdf' || type === 'application/office') {
+                    // Dropbox Temporary Links force downloads for PDFs and Office files. 
                     // Use Google Docs Viewer to render the direct download link in an iframe.
-                    let pdfUrl = srcUrl;
+                    let viewerUrl = srcUrl;
                     if (srcUrl.includes('dropboxusercontent.com') || srcUrl.includes('dl=1')) {
-                        pdfUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(srcUrl)}&embedded=true`;
+                        viewerUrl = `https://docs.google.com/viewer?url=${encodeURIComponent(srcUrl)}&embedded=true`;
                     }
-                    container.innerHTML = `<iframe src="${pdfUrl}" width="100%" height="100%" frameborder="0" style="background:white; border-radius: 8px;"></iframe>`;
+                    container.innerHTML = `<iframe src="${viewerUrl}" width="100%" height="100%" frameborder="0" style="background:white; border-radius: 8px;"></iframe>`;
                     modal.style.display = 'flex';
                 } else {
                     this.showToast('此檔案類型無法在網頁中直接預覽，將自動下載');
