@@ -1186,6 +1186,14 @@
                                 else if (colorName.includes('🟣')) color = 'purple';
                             }
 
+                            let dropboxPath = undefined;
+                            if (props['附件'] && props['附件'].files && props['附件'].files.length > 0) {
+                                const fileObj = props['附件'].files[0];
+                                if (fileObj.type === 'external' && fileObj.external.url.startsWith('https://nfm-dropbox.local')) {
+                                    dropboxPath = decodeURI(fileObj.external.url.replace('https://nfm-dropbox.local', ''));
+                                }
+                            }
+
                             items.push({
                                 id: page.id,
                                 name: title,
@@ -1193,6 +1201,7 @@
                                 parentId: parentId,
                                 tags: tags,
                                 color: color,
+                                dropboxPath: dropboxPath,
                                 createdAt: new Date(page.created_time)
                             });
                         });
@@ -1219,6 +1228,14 @@
                                 tags = props['標籤'].multi_select.map(t => t.name);
                             }
 
+                            let dropboxPath = undefined;
+                            if (props['附件'] && props['附件'].files && props['附件'].files.length > 0) {
+                                const fileObj = props['附件'].files[0];
+                                if (fileObj.type === 'external' && fileObj.external.url.startsWith('https://nfm-dropbox.local')) {
+                                    dropboxPath = decodeURI(fileObj.external.url.replace('https://nfm-dropbox.local', ''));
+                                }
+                            }
+
                             items.push({
                                 id: page.id,
                                 name: title,
@@ -1226,6 +1243,7 @@
                                 parentId: parentId,
                                 tags: tags,
                                 color: 'blue',
+                                dropboxPath: dropboxPath,
                                 createdAt: new Date(page.created_time)
                             });
                         });
@@ -1820,16 +1838,15 @@
                         }
 
                         // Store the Dropbox URL in 附件 (Files & Media) if available
-                        if (processedItem.sharedLink || processedItem.fileUrl) {
+                        if (processedItem.dropboxPath) {
                             properties["附件"] = {
                                 "files": [{
                                     "name": fileItem.name,
                                     "type": "external",
-                                    "external": { "url": processedItem.sharedLink || processedItem.fileUrl }
+                                    "external": { "url": "https://nfm-dropbox.local" + encodeURI(processedItem.dropboxPath) }
                                 }]
                             };
                         }
-
                         const response = await this.notionRequest('/pages/file_db', 'POST', {
                             properties: properties
                         });
@@ -1854,7 +1871,6 @@
                     return await this.createItem(fileItem);
                 }
             }
-
             async deleteFile(item) {
                 // Delete a block or archive a page
                 if (item.id !== 'root') {
@@ -2283,14 +2299,21 @@
                     // File preview
                     if (item.fileData) {
                         this.openPreviewModal(item, item.fileData);
-                    } else if (item.dropboxPath && this.state.providerName === 'dropbox') {
+                    } else if (this.state.providerName === 'dropbox') {
+                        let path = item.dropboxPath;
+                        if (!path) {
+                            const filenameSafe = item.name.replace(/[\/\\?%*:|"<>\n]/g, '-');
+                            const folderPath = this.providers.dropbox.getFolderPath(item.parentId);
+                            path = folderPath + '/' + filenameSafe;
+                        }
+
                         this.showToast('正在準備預覽...');
-                        this.providers.dropbox.dbx.filesGetTemporaryLink({ path: item.dropboxPath })
+                        this.providers.dropbox.dbx.filesGetTemporaryLink({ path: path })
                             .then(response => {
                                 this.openPreviewModal(item, response.result.link);
                             })
                             .catch(err => {
-                                console.error(err);
+                                console.error('Preview error:', err);
                                 this.showToast('無法預覽檔案');
                             });
                     } else {
