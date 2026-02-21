@@ -1307,6 +1307,13 @@
                                 "relation": [{ "id": item.parentId }]
                             };
                         }
+                        if (item.type === 'folder' && item.color) {
+                            const colorMap = {
+                                'red': '🔴 紅色', 'orange': '🟠 橙色', 'yellow': '🟡 黃色',
+                                'green': '🟢 綠色', 'blue': '🔵 藍色', 'purple': '🟣 紫色'
+                            };
+                            properties["資料夾顏色"] = { "select": { "name": colorMap[item.color] || '🔵 藍色' } };
+                        }
                     }
 
                     if (item.tags && item.tags.length > 0) {
@@ -1750,6 +1757,14 @@
                     // To be safe, we only send tags if item.tags has elements.
                     if (item.tags && item.tags.length > 0) {
                         properties["標籤"] = { "multi_select": item.tags.map(t => ({ name: t })) };
+                    }
+
+                    if (item.type === 'folder' && item.color) {
+                        const colorMap = {
+                            'red': '🔴 紅色', 'orange': '🟠 橙色', 'yellow': '🟡 黃色',
+                            'green': '🟢 綠色', 'blue': '🔵 藍色', 'purple': '🟣 紫色'
+                        };
+                        properties["資料夾顏色"] = { "select": { "name": colorMap[item.color] || '🔵 藍色' } };
                     }
 
                     await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
