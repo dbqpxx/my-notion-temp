@@ -1196,7 +1196,11 @@
                                     } else if (url.startsWith('https://www.dropbox.com/home')) {
                                         try {
                                             const urlObj = new URL(url);
-                                            const folder = decodeURI(urlObj.pathname.replace('/home', ''));
+                                            // Extract pathname and strip /home and optional /Apps/mynotion
+                                            let folder = decodeURI(urlObj.pathname);
+                                            folder = folder.replace(/^\/home/, '');
+                                            folder = folder.replace(/^\/Apps\/[^\/]+/, ''); // e.g., /Apps/mynotion
+
                                             const preview = urlObj.searchParams.get('preview');
                                             if (preview) {
                                                 dropboxPath = folder.endsWith('/') ? folder + preview : folder + '/' + preview;
@@ -1204,7 +1208,9 @@
                                                 dropboxPath = folder;
                                             }
                                         } catch (e) {
-                                            dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                            let fallback = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                            fallback = fallback.replace(/^\/Apps\/[^\/]+/, '');
+                                            dropboxPath = fallback;
                                         }
                                     }
                                 }
@@ -1254,7 +1260,10 @@
                                     } else if (url.startsWith('https://www.dropbox.com/home')) {
                                         try {
                                             const urlObj = new URL(url);
-                                            const folder = decodeURI(urlObj.pathname.replace('/home', ''));
+                                            let folder = decodeURI(urlObj.pathname);
+                                            folder = folder.replace(/^\/home/, '');
+                                            folder = folder.replace(/^\/Apps\/[^\/]+/, '');
+
                                             const preview = urlObj.searchParams.get('preview');
                                             if (preview) {
                                                 dropboxPath = folder.endsWith('/') ? folder + preview : folder + '/' + preview;
@@ -1262,7 +1271,9 @@
                                                 dropboxPath = folder;
                                             }
                                         } catch (e) {
-                                            dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                            let fallback = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
+                                            fallback = fallback.replace(/^\/Apps\/[^\/]+/, '');
+                                            dropboxPath = fallback;
                                         }
                                     }
                                 }
@@ -1889,7 +1900,12 @@
                             const parts = processedItem.dropboxPath.split('/');
                             const filename = parts.pop();
                             const folderPath = parts.join('/');
-                            const dropboxHomeUrl = `https://www.dropbox.com/home${encodeURI(folderPath)}?preview=${encodeURIComponent(filename)}`;
+
+                            // Dropbox App folders are physically rooted at /Apps/AppName/ for web links 
+                            // even though the API treats / as the app root.
+                            // We dynamically insert /Apps/mynotion to make the URL functional.
+                            const webFolderPath = `/Apps/mynotion${folderPath}`;
+                            const dropboxHomeUrl = `https://www.dropbox.com/home${encodeURI(webFolderPath)}?preview=${encodeURIComponent(filename)}`;
 
                             properties["附件"] = {
                                 "files": [{
