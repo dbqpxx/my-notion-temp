@@ -1863,7 +1863,7 @@
                     }
                 } else {
                     // Dropbox not connected - prompt user to connect
-                    if (confirm('上傳檔案需要連接 Dropbox 來儲存實際檔案\n是否前往 Dropbox 登入？\n\n(選「取消」則僅建立 Notion 記錄不含檔案)')) {
+                    if (confirm('上傳檔案需要連接 Dropbox 來儲存實際檔案\\n是否前往 Dropbox 登入？\\n\\n(選「取消」則僅建立 Notion 記錄不含檔案)')) {
                         app.providers.dropbox.login();
                         return fileItem; // Will need to re-upload after login
                     }
@@ -1871,7 +1871,18 @@
                     return await this.createItem(fileItem);
                 }
             }
+
             async deleteFile(item) {
+                // If Dropbox is connected, delete the actual file first
+                const dropboxProvider = app.providers.dropbox;
+                if (dropboxProvider && dropboxProvider.accessToken) {
+                    try {
+                        await dropboxProvider.deleteFile(item);
+                    } catch (e) {
+                        console.error("Failed to delete accompanying Dropbox file:", e);
+                    }
+                }
+
                 // Delete a block or archive a page
                 if (item.id !== 'root') {
                     await this.notionRequest(`/pages/${item.id}`, 'PATCH', { archived: true });
