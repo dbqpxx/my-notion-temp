@@ -2049,8 +2049,10 @@
                     disconnectBtn.style.display = 'none';
                 }
 
-                document.getElementById('btn-use-local').classList.toggle('primary', this.state.providerName === 'local');
-                document.getElementById('btn-use-dropbox').classList.toggle('primary', this.state.providerName === 'dropbox');
+                const providerSelect = document.getElementById('provider-select');
+                if (providerSelect) {
+                    providerSelect.value = this.state.providerName;
+                }
             },
 
             toggleSettings() {
@@ -2299,7 +2301,7 @@
                     // File preview
                     if (item.fileData) {
                         this.openPreviewModal(item, item.fileData);
-                    } else if (this.state.providerName === 'dropbox') {
+                    } else if (this.state.providerName === 'dropbox' || (this.state.providerName === 'notion' && this.providers.dropbox.accessToken)) {
                         let path = item.dropboxPath;
                         if (!path) {
                             const filenameSafe = item.name.replace(/[\/\\?%*:|"<>\n]/g, '-');
