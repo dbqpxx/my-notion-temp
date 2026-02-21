@@ -1408,13 +1408,19 @@
 
             async updateItem(item) {
                 try {
-                    if (item.id === 'root' || item.id.startsWith('nfm_')) return; // Skip local/temp items
+                    if (item.id === 'root' || item.id.startsWith('nfm_')) return;
 
-                    const properties = {
-                        "名稱": { "title": [{ "text": { "content": item.name } }] }
-                    };
+                    const properties = {};
+                    const isJournal = item.type === 'journal';
 
-                    if (item.tags) {
+                    // Most templates use "名稱" as title, but Journal guide said "標題"
+                    // We'll try to be flexible but default to "名稱" if it worked before
+                    properties["名稱"] = { "title": [{ "text": { "content": item.name } }] };
+
+                    // Only send tags if they exist and it's NOT a journal, 
+                    // or if journals have tags in the DB.
+                    // To be safe, we only send tags if item.tags has elements.
+                    if (item.tags && item.tags.length > 0) {
                         properties["標籤"] = { "multi_select": item.tags.map(t => ({ name: t })) };
                     }
 
@@ -1423,6 +1429,14 @@
                     });
                 } catch (e) {
                     console.error("Notion updateItem error", e);
+                    // If error is about property mismatch, we could retry without tags
+                    if (e.message && (e.message.includes('property') || e.message.includes('validation_error'))) {
+                        try {
+                            await this.notionRequest(`/pages/${item.id}`, 'PATCH', {
+                                properties: { "名稱": { "title": [{ "text": { "content": item.name } }] } }
+                            });
+                        } catch (re) { console.error("Retry update failed", re); }
+                    }
                 }
             }
 
@@ -2372,16 +2386,25 @@
                 if (newName && newName !== item.name) {
                     item.name = newName;
 
-                    if (this.storage.updateItem) {
-                        this.showToast('正在重新命名...');
-                        await this.storage.updateItem(item);
-                    }
-
+                    // Update UI immediately
                     this.saveData();
                     this.render();
-                    this.showToast('已重新命名');
+                    this.hideContextMenu();
+                    this.showToast('正在重新命名...');
+
+                    // Background sync
+                    if (this.storage.updateItem) {
+                        try {
+                            await this.storage.updateItem(item);
+                            this.showToast('已重新命名');
+                        } catch (e) {
+                            console.error('Rename sync error:', e);
+                            this.showToast('同步重命名失敗，但本地已更新');
+                        }
+                    }
+                } else {
+                    this.hideContextMenu();
                 }
-                this.hideContextMenu();
             },
 
             async setItemColor(color) {
