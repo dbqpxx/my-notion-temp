@@ -1210,15 +1210,19 @@
                 let currentLine = [];
 
                 richText.forEach(segment => {
-                    const text = segment.text.content;
-                    const parts = text.split(/\r?\n/);
+                    const content = segment.text.content;
+                    // Split by newline, but handle empty parts differently to ensure line count is correct
+                    const parts = content.split(/\r?\n/);
 
                     parts.forEach((part, i) => {
                         if (i > 0) {
+                            // Newline encountered: push current line and start fresh
                             lines.push(currentLine);
                             currentLine = [];
                         }
-                        if (part || parts.length === 1) {
+                        // Always push a segment if there's content OR it's a single part line
+                        // This ensures that " \n " results in two lines: [" "] and [" "]
+                        if (part.length > 0 || parts.length === 1) {
                             currentLine.push({
                                 ...segment,
                                 text: { ...segment.text, content: part }
@@ -1227,6 +1231,7 @@
                     });
                 });
 
+                // End of segments: push the last line if it has content OR if we have no lines yet
                 if (currentLine.length > 0 || lines.length === 0) {
                     lines.push(currentLine);
                 }
@@ -1245,7 +1250,8 @@
                         const lines = this.splitRichTextByLines(richText);
 
                         lines.forEach(lineRichText => {
-                            if (lineRichText.length === 0) {
+                            // If it's truly empty (a bare newline in editor), make it a paragraph with br
+                            if (lineRichText.length === 0 || (lineRichText.length === 1 && !lineRichText[0].text.content)) {
                                 blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
                                 return;
                             }
@@ -1269,11 +1275,11 @@
                                 blockType = 'bulleted_list_item';
                                 firstSeg.text.content = firstText.replace(/^\s*[-\*]\s+/, '');
                             } else if (/^\s*\[\s*\]\s+/.test(firstText)) {
-                                firstSeg.text.content = firstText.replace(/^\s*\[\s*\]\s+/, '');
+                                firstSeg.text.content = firstText.text.content.replace(/^\s*\[\s*\]\s+/, '');
                                 blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": lineRichText.filter(s => s.text.content) } });
                                 return;
                             } else if (/^\s*\[[xX]\]\s+/.test(firstText)) {
-                                firstSeg.text.content = firstText.replace(/^\s*\[[xX]\]\s+/, '');
+                                firstSeg.text.content = firstSeg.text.content.replace(/^\s*\[[xX]\]\s+/, '');
                                 blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": lineRichText.filter(s => s.text.content) } });
                                 return;
                             } else if (/^\s*---/.test(firstText)) {
@@ -1281,7 +1287,7 @@
                                 return;
                             }
 
-                            if (!firstSeg.text.content) lineRichText.shift();
+                            if (!firstSeg.text.content && lineRichText.length > 1) lineRichText.shift();
                             blocks.push({ "object": "block", "type": blockType, [blockType]: { "rich_text": lineRichText } });
                         });
                         return;
@@ -1305,7 +1311,7 @@
                         const richText = this.extractRichText(node);
                         const lines = this.splitRichTextByLines(richText);
                         lines.forEach(lineRichText => {
-                            if (lineRichText.length === 0) {
+                            if (lineRichText.length === 0 || (lineRichText.length === 1 && !lineRichText[0].text.content)) {
                                 blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": [] } });
                                 return;
                             }
@@ -1329,11 +1335,11 @@
                                 blockType = 'bulleted_list_item';
                                 firstSeg.text.content = firstText.replace(/^\s*[-\*]\s+/, '');
                             } else if (/^\s*\[\s*\]\s+/.test(firstText)) {
-                                firstSeg.text.content = firstText.replace(/^\s*\[\s*\]\s+/, '');
+                                firstSeg.text.content = firstSeg.text.content.replace(/^\s*\[\s*\]\s+/, '');
                                 blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": lineRichText.filter(s => s.text.content) } });
                                 return;
                             } else if (/^\s*\[[xX]\]\s+/.test(firstText)) {
-                                firstSeg.text.content = firstText.replace(/^\s*\[[xX]\]\s+/, '');
+                                firstSeg.text.content = firstSeg.text.content.replace(/^\s*\[[xX]\]\s+/, '');
                                 blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": lineRichText.filter(s => s.text.content) } });
                                 return;
                             } else if (/^\s*---/.test(firstText)) {
@@ -1341,7 +1347,7 @@
                                 return;
                             }
 
-                            if (!firstSeg.text.content) lineRichText.shift();
+                            if (!firstSeg.text.content && lineRichText.length > 1) lineRichText.shift();
                             blocks.push({ "object": "block", "type": blockType, [blockType]: { "rich_text": lineRichText } });
                         });
                     } else if (tag === 'br') {
@@ -1359,73 +1365,19 @@
             extractRichText(node) {
                 const segments = [];
                 const walk = (el, annotations) => {
+                    // Check if el is a text node directly
+                    if (el.nodeType === Node.TEXT_NODE) {
+                        processTextNode(el, annotations);
+                        return;
+                    }
+
                     el.childNodes.forEach(child => {
                         if (child.nodeType === Node.TEXT_NODE) {
-                            let text = child.textContent;
-                            if (text) {
-                                // Add inline markdown parsing for literals like **bold**, *italic*, ~~strike~~
-                                const parseInline = (str) => {
-                                    const parts = [];
-                                    let currentText = str;
-
-                                    // Patterns for bold, italic, strikethrough
-                                    const regex = /(\*\*|__|~~|\*|_)(.*?)\1/g;
-                                    let lastIndex = 0;
-                                    let match;
-
-                                    while ((match = regex.exec(currentText)) !== null) {
-                                        // add plain text before the match
-                                        if (match.index > lastIndex) {
-                                            parts.push({
-                                                "type": "text",
-                                                "text": { "content": currentText.substring(lastIndex, match.index) },
-                                                "annotations": { ...annotations }
-                                            });
-                                        }
-
-                                        const type = match[1];
-                                        const inner = match[2];
-                                        const newAnno = { ...annotations };
-                                        if (type === '**' || type === '__') newAnno.bold = true;
-                                        if (type === '*' || type === '_') newAnno.italic = true;
-                                        if (type === '~~') newAnno.strikethrough = true;
-
-                                        parts.push({
-                                            "type": "text",
-                                            "text": { "content": inner },
-                                            "annotations": newAnno
-                                        });
-
-                                        lastIndex = regex.lastIndex;
-                                    }
-
-                                    if (lastIndex < currentText.length) {
-                                        parts.push({
-                                            "type": "text",
-                                            "text": { "content": currentText.substring(lastIndex) },
-                                            "annotations": { ...annotations }
-                                        });
-                                    }
-                                    return parts;
-                                };
-
-                                const parsedSegments = parseInline(text);
-                                parsedSegments.forEach(seg => {
-                                    let segText = seg.text.content;
-                                    while (segText.length > 0) {
-                                        segments.push({
-                                            "type": "text",
-                                            "text": { "content": segText.substring(0, 2000) },
-                                            "annotations": { ...seg.annotations }
-                                        });
-                                        segText = segText.substring(2000);
-                                    }
-                                });
-                            }
+                            processTextNode(child, annotations);
                         } else if (child.nodeType === Node.ELEMENT_NODE) {
                             const tag = child.tagName.toLowerCase();
                             if (tag === 'br') {
-                                segments.push({ "type": "text", "text": { "content": "\n" } });
+                                segments.push({ "type": "text", "text": { "content": "\n" }, "annotations": { ...annotations } });
                                 return;
                             }
                             const newAnno = { ...annotations };
@@ -1435,7 +1387,7 @@
                             if (tag === 'a') {
                                 segments.push({
                                     "type": "text",
-                                    "text": { "content": child.innerText.substring(0, 2000), "link": { "url": child.href || '' } },
+                                    "text": { "content": (child.innerText || "").substring(0, 2000), "link": { "url": child.href || '' } },
                                     "annotations": { ...newAnno }
                                 });
                                 return;
@@ -1444,6 +1396,66 @@
                         }
                     });
                 };
+
+                const processTextNode = (child, annotations) => {
+                    let text = child.textContent;
+                    if (text) {
+                        const parsedSegments = parseInline(text, annotations);
+                        parsedSegments.forEach(seg => {
+                            let segText = seg.text.content;
+                            // Array.from is surrogate-pair safe
+                            const chars = Array.from(segText);
+                            while (chars.length > 0) {
+                                const chunk = chars.splice(0, 2000).join('');
+                                segments.push({
+                                    "type": "text",
+                                    "text": { "content": chunk },
+                                    "annotations": { ...seg.annotations }
+                                });
+                            }
+                        });
+                    }
+                };
+
+                const parseInline = (str, annotations) => {
+                    const parts = [];
+                    let currentText = str;
+                    const regex = /(\*\*|__|~~|\*|_)(.*?)\1/g;
+                    let lastIndex = 0;
+                    let match;
+
+                    while ((match = regex.exec(currentText)) !== null) {
+                        if (match.index > lastIndex) {
+                            parts.push({
+                                "type": "text",
+                                "text": { "content": currentText.substring(lastIndex, match.index) },
+                                "annotations": { ...annotations }
+                            });
+                        }
+                        const type = match[1];
+                        const inner = match[2];
+                        const newAnno = { ...annotations };
+                        if (type === '**' || type === '__') newAnno.bold = true;
+                        if (type === '*' || type === '_') newAnno.italic = true;
+                        if (type === '~~') newAnno.strikethrough = true;
+                        parts.push({
+                            "type": "text",
+                            "text": { "content": inner },
+                            "annotations": newAnno
+                        });
+                        lastIndex = regex.lastIndex;
+                    }
+
+                    if (lastIndex < currentText.length) {
+                        parts.push({
+                            "type": "text",
+                            "text": { "content": currentText.substring(lastIndex) },
+                            "annotations": { ...annotations }
+                        });
+                    }
+                    return parts;
+                };
+
                 walk(node, {});
                 return segments;
             }
@@ -2653,20 +2665,14 @@
 
                 // Close modals on click outside (overlay)
                 document.addEventListener('click', (e) => {
-                    const modals = ['.modal']; // Targeted classes
-                    modals.forEach(selector => {
-                        const modalList = document.querySelectorAll(selector);
-                        modalList.forEach(m => {
-                            if (e.target === m && m.style.display === 'flex') {
-                                // Specific logic per modal if needed
-                                if (m.id === 'journal-modal') {
-                                    this.cancelEditor(); // Cancel, NOT save
-                                } else {
-                                    m.style.display = 'none';
-                                }
-                            }
-                        });
-                    });
+                    const modal = e.target.closest('.modal');
+                    if (modal && e.target === modal) {
+                        if (modal.id === 'journal-modal') {
+                            this.cancelEditor();
+                        } else {
+                            modal.style.display = 'none';
+                        }
+                    }
                 });
 
                 // Markdown Shortcuts for Editor
