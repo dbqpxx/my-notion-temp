@@ -1196,10 +1196,10 @@
                                     } else if (url.startsWith('https://www.dropbox.com/home')) {
                                         try {
                                             const urlObj = new URL(url);
-                                            // Extract pathname and strip /home and optional /Apps/mynotion
+                                            // Extract pathname and strip /home and optional /應用程式/mynotion
                                             let folder = decodeURI(urlObj.pathname);
                                             folder = folder.replace(/^\/home/, '');
-                                            folder = folder.replace(/^\/Apps\/[^\/]+/, ''); // e.g., /Apps/mynotion
+                                            folder = folder.replace(/^\/應用程式\/[^\/]+/, ''); // e.g., /應用程式/mynotion
 
                                             const preview = urlObj.searchParams.get('preview');
                                             if (preview) {
@@ -1209,7 +1209,7 @@
                                             }
                                         } catch (e) {
                                             let fallback = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
-                                            fallback = fallback.replace(/^\/Apps\/[^\/]+/, '');
+                                            fallback = fallback.replace(/^\/應用程式\/[^\/]+/, '');
                                             dropboxPath = fallback;
                                         }
                                     }
@@ -1262,7 +1262,7 @@
                                             const urlObj = new URL(url);
                                             let folder = decodeURI(urlObj.pathname);
                                             folder = folder.replace(/^\/home/, '');
-                                            folder = folder.replace(/^\/Apps\/[^\/]+/, '');
+                                            folder = folder.replace(/^\/應用程式\/[^\/]+/, '');
 
                                             const preview = urlObj.searchParams.get('preview');
                                             if (preview) {
@@ -1272,7 +1272,7 @@
                                             }
                                         } catch (e) {
                                             let fallback = decodeURI(url.replace('https://www.dropbox.com/home', '').split('?')[0]);
-                                            fallback = fallback.replace(/^\/Apps\/[^\/]+/, '');
+                                            fallback = fallback.replace(/^\/應用程式\/[^\/]+/, '');
                                             dropboxPath = fallback;
                                         }
                                     }
@@ -1901,10 +1901,10 @@
                             const filename = parts.pop();
                             const folderPath = parts.join('/');
 
-                            // Dropbox App folders are physically rooted at /Apps/AppName/ for web links 
+                            // Dropbox App folders are physically rooted at /應用程式/AppName/ for web links 
                             // even though the API treats / as the app root.
-                            // We dynamically insert /Apps/mynotion to make the URL functional.
-                            const webFolderPath = `/Apps/mynotion${folderPath}`;
+                            // We dynamically insert /應用程式/mynotion to make the URL functional.
+                            const webFolderPath = `/應用程式/mynotion${folderPath}`;
                             const dropboxHomeUrl = `https://www.dropbox.com/home${encodeURI(webFolderPath)}?preview=${encodeURIComponent(filename)}`;
 
                             properties["附件"] = {
