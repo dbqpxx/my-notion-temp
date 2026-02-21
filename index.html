@@ -1964,6 +1964,7 @@
             state: {
                 items: [],
                 currentFolder: 'root',
+                currentView: 'files',
                 viewMode: 'grid',
                 editingId: null,
                 contextId: null,
@@ -2177,19 +2178,30 @@
                 grid.innerHTML = '';
 
                 let filteredItems = this.state.items.filter(item => {
-                    // Exclude root and filter by current folder
+                    // Exclude root
                     if (item.id === 'root') return false;
 
-                    const matchesFolder = item.parentId === this.state.currentFolder;
                     const query = this.state.searchQuery.toLowerCase();
                     const matchesSearch = item.name.toLowerCase().includes(query) ||
                         (item.tags && item.tags.some(t => t.toLowerCase().includes(query)));
 
-                    return matchesFolder && matchesSearch;
+                    if (this.state.currentView === 'journal') {
+                        return item.type === 'journal' && matchesSearch;
+                    } else if (this.state.currentView === 'recent') {
+                        return matchesSearch; // All types, ignoring folder hierarchy
+                    } else { // default 'files'
+                        return item.parentId === this.state.currentFolder && matchesSearch;
+                    }
                 });
 
+                if (this.state.currentView === 'recent') {
+                    // Sort descending by date and limit
+                    filteredItems.sort((a, b) => b.createdAt - a.createdAt);
+                    filteredItems = filteredItems.slice(0, 50);
+                }
+
                 if (filteredItems.length === 0) {
-                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; opacity: 0.4; padding: 50px;">此資料夾目前是空的</div>`;
+                    grid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; opacity: 0.4; padding: 50px;">此視圖目前是空的</div>`;
                     return;
                 }
 
@@ -2280,6 +2292,18 @@
                 const container = document.getElementById('breadcrumbs');
                 container.innerHTML = '';
 
+                if (this.state.currentView === 'journal') {
+                    const span = document.createElement('span');
+                    span.innerText = '📓 共作日誌';
+                    container.appendChild(span);
+                    return;
+                } else if (this.state.currentView === 'recent') {
+                    const span = document.createElement('span');
+                    span.innerText = '🕒 最近更新';
+                    container.appendChild(span);
+                    return;
+                }
+
                 let path = [];
                 let curr = this.state.items.find(i => i.id === this.state.currentFolder);
 
@@ -2366,8 +2390,29 @@
 
             navigateTo(folderId) {
                 this.state.currentFolder = folderId;
+                this.state.currentView = 'files';
                 this.state.searchQuery = '';
                 document.getElementById('global-search').value = '';
+
+                // Update active state in sidebar
+                document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+                const homeNode = Array.from(document.querySelectorAll('.tree-item')).find(el => el.innerText.includes('檔案總管') && !el.closest('#folder-tree'));
+                if (homeNode) homeNode.classList.add('active');
+
+                this.render();
+            },
+
+            filterBy(viewType) {
+                this.state.currentView = viewType;
+                this.state.searchQuery = '';
+                document.getElementById('global-search').value = '';
+
+                // Update active state in sidebar
+                document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
+                const targetText = viewType === 'journal' ? '共作日誌' : '最近更新';
+                const targetNode = Array.from(document.querySelectorAll('.tree-item')).find(el => el.innerText.includes(targetText));
+                if (targetNode) targetNode.classList.add('active');
+
                 this.render();
             },
 
