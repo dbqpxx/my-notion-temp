@@ -1231,8 +1231,13 @@
                             let dropboxPath = undefined;
                             if (props['附件'] && props['附件'].files && props['附件'].files.length > 0) {
                                 const fileObj = props['附件'].files[0];
-                                if (fileObj.type === 'external' && fileObj.external.url.startsWith('https://nfm-dropbox.local')) {
-                                    dropboxPath = decodeURI(fileObj.external.url.replace('https://nfm-dropbox.local', ''));
+                                if (fileObj.type === 'external') {
+                                    const url = fileObj.external.url;
+                                    if (url.startsWith('https://nfm-dropbox.local')) {
+                                        dropboxPath = decodeURI(url.replace('https://nfm-dropbox.local', ''));
+                                    } else if (url.startsWith('https://www.dropbox.com/home')) {
+                                        dropboxPath = decodeURI(url.replace('https://www.dropbox.com/home', ''));
+                                    }
                                 }
                             }
 
@@ -1858,7 +1863,7 @@
                                 "files": [{
                                     "name": fileItem.name,
                                     "type": "external",
-                                    "external": { "url": "https://nfm-dropbox.local" + encodeURI(processedItem.dropboxPath) }
+                                    "external": { "url": "https://www.dropbox.com/home" + encodeURI(processedItem.dropboxPath) }
                                 }]
                             };
                         }
