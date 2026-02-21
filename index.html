@@ -2335,7 +2335,7 @@
                 container.innerHTML = '';
 
                 let type = item.fileType || '';
-                if (!type && item.name) {
+                if ((!type || !type.includes('/')) && item.name) {
                     const ext = item.name.split('.').pop().toLowerCase();
                     if (['jpg', 'jpeg', 'png', 'gif', 'webp'].includes(ext)) type = 'image/' + ext;
                     else if (['mp4', 'webm', 'ogg'].includes(ext)) type = 'video/' + ext;
