@@ -1058,6 +1058,39 @@
                         });
                     }
 
+                    // Map Journal DB rows
+                    if (journalDbRes && journalDbRes.results) {
+                        journalDbRes.results.forEach(page => {
+                            const props = page.properties;
+
+                            let title = "未命名日誌";
+                            if (props['名稱'] && props['名稱'].title && props['名稱'].title.length > 0) {
+                                title = props['名稱'].title[0].plain_text;
+                            }
+
+                            // Read parent folder relation (關聯檔案)
+                            let parentId = 'root';
+                            if (props['關聯檔案'] && props['關聯檔案'].relation && props['關聯檔案'].relation.length > 0) {
+                                parentId = props['關聯檔案'].relation[0].id;
+                            }
+
+                            let tags = [];
+                            if (props['標籤'] && props['標籤'].multi_select) {
+                                tags = props['標籤'].multi_select.map(t => t.name);
+                            }
+
+                            items.push({
+                                id: page.id,
+                                name: title,
+                                type: 'journal',
+                                parentId: parentId,
+                                tags: tags,
+                                color: 'blue',
+                                createdAt: new Date(page.created_time)
+                            });
+                        });
+                    }
+
                     if (items.length === 0) {
                         return [
                             { id: 'root', name: 'Root', type: 'folder', parentId: null, color: 'blue', createdAt: new Date() },
@@ -1069,15 +1102,11 @@
 
                 } catch (error) {
                     console.error("Notion getItems error", error);
-                    // Fallback to defaults or empty to prevent crashing
                     return [];
                 }
             }
 
             async saveItems(items) {
-                // To avoid sending the whole array to Notion (which is just a DB), 
-                // we will rely on individual API create/update calls for Notion instead 
-                // of bulk saving a JSON file. 
                 return true;
             }
 
@@ -1274,13 +1303,18 @@
                 try {
                     if (!item.id || item.id === 'root' || item.id.startsWith('nfm_')) return;
 
-                    // First delete existing blocks in the page in parallel for speed
+                    // First delete existing blocks in the page. 
+                    // Serializing this to avoid 429 Rate Limit errors from Notion Proxy.
                     const existingBlocks = await this.notionRequest(`/blocks/${item.id}/children`, 'GET');
                     if (existingBlocks && existingBlocks.results && existingBlocks.results.length > 0) {
-                        // Use Promise.all to delete blocks in parallel
-                        await Promise.all(existingBlocks.results.map(block =>
-                            this.notionRequest(`/blocks/${block.id}`, 'DELETE')
-                        ));
+                        for (const block of existingBlocks.results) {
+                            try {
+                                await this.notionRequest(`/blocks/${block.id}`, 'DELETE');
+                            } catch (de) {
+                                console.warn("Failed to delete block during cleanup:", block.id, de);
+                                // Continue to ensure we try to delete as many as possible
+                            }
+                        }
                     }
 
                     // Then append new content blocks
