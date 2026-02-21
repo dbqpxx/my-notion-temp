@@ -347,11 +347,37 @@
             border-radius: 0 8px 8px 0;
         }
 
+        #editor-body h1 {
+            font-size: 1.8rem;
+            margin: 20px 0 10px 0;
+            border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 8px;
+        }
+
         #editor-body h2 {
             font-size: 1.4rem;
             margin: 16px 0 8px 0;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             padding-bottom: 6px;
+        }
+
+        #editor-body h3 {
+            font-size: 1.1rem;
+            margin: 12px 0 6px 0;
+            opacity: 0.9;
+            font-weight: 600;
+        }
+
+        .to-do-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 10px;
+            margin-bottom: 6px;
+        }
+
+        .to-do-item input[type="checkbox"] {
+            margin-top: 5px;
+            cursor: pointer;
         }
 
         #editor-body hr {
@@ -509,7 +535,7 @@
     </style>
 </head>
 
-<body oncontextmenu="return false;">
+<body oncontextmenu="return app.handleGlobalContextMenu(event)">
 
     <!-- Sidebar -->
     <div id="sidebar" class="glass-panel">
@@ -1238,33 +1264,62 @@
                     } else if (tag === 'hr') {
                         blocks.push({ "object": "block", "type": "divider", "divider": {} });
                     } else if (tag === 'p' || tag === 'div') {
-                        const text = node.innerText.trim();
+                        // For paragraphs or divs, we might have multiple lines pasted as one block.
+                        // We split by newline and process each line as a potential Markdown block.
+                        const rawText = node.innerText || '';
+                        const lines = rawText.split(/\r?\n/);
 
-                        // Detect Markdown markers at the start of paragraphs (for pasted text)
-                        if (text.startsWith('# ')) {
-                            blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                        } else if (text.startsWith('## ')) {
-                            blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": text.substring(3) } }] } });
-                        } else if (text.startsWith('### ')) {
-                            blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
-                        } else if (text.startsWith('> ')) {
-                            blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                        } else if (text.startsWith('---')) {
-                            blocks.push({ "object": "block", "type": "divider", "divider": {} });
-                        } else if (text.startsWith('- ') || text.startsWith('* ')) {
-                            blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
-                        } else if (text.startsWith('[ ] ')) {
-                            blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
-                        } else if (text.startsWith('[x] ') || text.startsWith('[X] ')) {
-                            blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
+                        if (lines.length > 1) {
+                            lines.forEach(line => {
+                                const trimLine = line.trim();
+                                if (!trimLine) return;
+
+                                if (trimLine.startsWith('# ')) {
+                                    blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
+                                } else if (trimLine.startsWith('## ')) {
+                                    blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(3) } }] } });
+                                } else if (trimLine.startsWith('### ')) {
+                                    blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
+                                } else if (trimLine.startsWith('> ')) {
+                                    blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
+                                } else if (trimLine.startsWith('---')) {
+                                    blocks.push({ "object": "block", "type": "divider", "divider": {} });
+                                } else if (trimLine.startsWith('- ') || trimLine.startsWith('* ')) {
+                                    blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(2) } }] } });
+                                } else if (trimLine.startsWith('[ ] ')) {
+                                    blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
+                                } else if (trimLine.startsWith('[x] ') || trimLine.startsWith('[X] ')) {
+                                    blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": trimLine.substring(4) } }] } });
+                                } else {
+                                    blocks.push({
+                                        "object": "block", "type": "paragraph",
+                                        "paragraph": { "rich_text": [{ "type": "text", "text": { "content": trimLine } }] }
+                                    });
+                                }
+                            });
                         } else {
-                            // Extract rich text annotations for normal paragraphs
-                            const richText = this.extractRichText(node);
-                            if (richText.length > 0) {
-                                blocks.push({
-                                    "object": "block", "type": "paragraph",
-                                    "paragraph": { "rich_text": richText }
-                                });
+                            const text = rawText.trim();
+                            if (text.startsWith('# ')) {
+                                blocks.push({ "object": "block", "type": "heading_1", "heading_1": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
+                            } else if (text.startsWith('## ')) {
+                                blocks.push({ "object": "block", "type": "heading_2", "heading_2": { "rich_text": [{ "type": "text", "text": { "content": text.substring(3) } }] } });
+                            } else if (text.startsWith('### ')) {
+                                blocks.push({ "object": "block", "type": "heading_3", "heading_3": { "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
+                            } else if (text.startsWith('> ')) {
+                                blocks.push({ "object": "block", "type": "quote", "quote": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
+                            } else if (text.startsWith('---')) {
+                                blocks.push({ "object": "block", "type": "divider", "divider": {} });
+                            } else if (text.startsWith('- ') || text.startsWith('* ')) {
+                                blocks.push({ "object": "block", "type": "bulleted_list_item", "bulleted_list_item": { "rich_text": [{ "type": "text", "text": { "content": text.substring(2) } }] } });
+                            } else if (text.startsWith('[ ] ')) {
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": false, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
+                            } else if (text.startsWith('[x] ') || text.startsWith('[X] ')) {
+                                blocks.push({ "object": "block", "type": "to_do", "to_do": { "checked": true, "rich_text": [{ "type": "text", "text": { "content": text.substring(4) } }] } });
+                            } else {
+                                const richText = this.extractRichText(node);
+                                if (richText.length > 0) {
+                                    blocks.push({ "object": "block", "type": "paragraph", "paragraph": { "rich_text": richText } });
+                                }
                             }
                         }
                     } else if (tag === 'br') {
@@ -1509,8 +1564,8 @@
                             break;
                         case 'to_do':
                             const checked = block.to_do.checked ? 'checked' : '';
-                            html += `<div style="display:flex; align-items:flex-start; gap:8px; margin-bottom:4px;">
-                                <input type="checkbox" ${checked} disabled style="margin-top:4px;">
+                            html += `<div class="to-do-item">
+                                <input type="checkbox" ${checked} disabled>
                                 <span>${textHtml}</span>
                             </div>`;
                             break;
@@ -2583,6 +2638,16 @@
                     this.handleFileUpload(e.dataTransfer.files);
                 });
 
+                // Close modal on click outside (overlay)
+                const journalModal = document.getElementById('journal-modal');
+                if (journalModal) {
+                    journalModal.addEventListener('click', (e) => {
+                        if (e.target === journalModal) {
+                            this.closeEditor();
+                        }
+                    });
+                }
+
                 // Markdown Shortcuts for Editor
                 const editorBody = document.getElementById('editor-body');
                 if (editorBody) {
@@ -2634,6 +2699,13 @@
                         }
                     }
                 }
+            },
+
+            handleGlobalContextMenu(e) {
+                const isInput = e.target.closest('#editor-body, input, textarea, [contenteditable="true"]');
+                if (isInput) return true; // Allow native menu
+                e.preventDefault();
+                return false;
             },
 
             showToast(msg) {
