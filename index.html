@@ -464,7 +464,51 @@
             box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
             display: none;
             animation: slideIn 0.3s ease-out;
-            z-index: 4000;
+            z-index: 5000;
+        }
+
+        .upload-item {
+            background: rgba(25, 25, 25, 0.85);
+            backdrop-filter: blur(15px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.3);
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            color: white;
+            animation: slideIn 0.3s ease-out;
+            transition: opacity 0.3s;
+        }
+
+        .upload-item-header {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .upload-item-name {
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            max-width: 200px;
+        }
+
+        .progress-bar-bg {
+            width: 100%;
+            height: 6px;
+            background: rgba(255, 255, 255, 0.1);
+            border-radius: 3px;
+            overflow: hidden;
+        }
+
+        .progress-bar-fill {
+            height: 100%;
+            background: var(--primary);
+            width: 0%;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 10px var(--primary);
         }
 
         @keyframes slideIn {
@@ -682,6 +726,33 @@
                     onclick="document.getElementById('relation-picker-modal').style.display='none'">取消</button>
                 <button class="btn primary" onclick="app.confirmRelationPick()">確認</button>
             </div>
+        </div>
+    </div>
+    </div>
+    </div>
+
+    <!-- Upload Progress -->
+    <div id="upload-progress-container"
+        style="position: fixed; bottom: 80px; right: 20px; display: none; flex-direction: column; gap: 10px; z-index: 5000; width: 300px;">
+    </div>
+
+    <!-- Preview Modal -->
+    <div id="preview-modal" class="modal" onclick="if(event.target===this) app.closePreview()">
+        <div class="modal-content glass-panel"
+            style="background: rgba(0,0,0,0.85); flex-direction: column; align-items: center; justify-content: center; position: relative; padding: 0; width: 95vw; height: 95vh; max-width: none;">
+            <button class="btn"
+                style="position: absolute; top: 15px; right: 15px; background: rgba(255,255,255,0.2); border: none; z-index: 10; font-size: 1.2rem; padding: 10px 15px;"
+                onclick="app.closePreview()"><i class="fas fa-times"></i></button>
+            <div id="preview-container"
+                style="width: 100%; height: 100%; display: flex; align-items: center; justify-content: center; overflow: hidden; padding: 10px;">
+                <!-- dynamic preview element inserted here -->
+            </div>
+            <div id="preview-title"
+                style="position: absolute; bottom: 20px; left: 20px; color: white; background: rgba(0,0,0,0.5); padding: 8px 15px; border-radius: 8px; font-weight: 500;">
+            </div>
+            <a id="preview-download-btn" class="btn primary"
+                style="position: absolute; bottom: 20px; right: 20px; text-decoration: none;" href="#"
+                target="_blank"><i class="fas fa-download"></i> 開啟 / 下載</a>
         </div>
     </div>
 
@@ -944,10 +1015,34 @@
                 return true;
             }
 
+            getFolderPath(parentId) {
+                if (!parentId || parentId === 'root') return '/NFM';
+
+                let path = '';
+                let currentId = parentId;
+                const visited = new Set();
+
+                while (currentId && currentId !== 'root') {
+                    if (visited.has(currentId)) break; // Prevent infinite loops
+                    visited.add(currentId);
+
+                    const folder = app.state.items.find(i => i.id === currentId);
+                    if (folder) {
+                        path = '/' + folder.name.replace(/[/\\?%*:|"<>]/g, '-') + path;
+                        currentId = folder.parentId;
+                    } else {
+                        break;
+                    }
+                }
+                return '/NFM' + path;
+            }
+
             async uploadFile(fileItem) {
                 if (fileItem.type === 'file' && fileItem.fileObj) {
-                    // Upload to /filename
-                    const uploadPath = '/' + fileItem.name;
+                    const folderPath = this.getFolderPath(fileItem.parentId);
+                    // Upload to /NFM/.../filename
+                    const filenameSafe = fileItem.name.replace(/[/\\?%*:|"<>]/g, '-');
+                    const uploadPath = folderPath + '/' + filenameSafe;
                     try {
                         const result = await this.dbx.filesUpload({
                             path: uploadPath,
@@ -970,13 +1065,26 @@
             }
 
             async deleteFile(item) {
-                if (item.type === 'file' && item.dropboxPath && this.dbx) {
+                if (!this.dbx) return true;
+
+                let targetPath = null;
+                if (item.type === 'file' && item.dropboxPath) {
+                    targetPath = item.dropboxPath;
+                } else if (item.type === 'folder') {
+                    const folderPath = this.getFolderPath(item.parentId);
+                    const safeName = item.name.replace(/[/\\?%*:|"<>]/g, '-');
+                    targetPath = folderPath + '/' + safeName;
+                }
+
+                if (targetPath) {
                     try {
                         await this.dbx.filesDeleteV2({
-                            path: item.dropboxPath
+                            path: targetPath
                         });
                     } catch (e) {
-                        if (!this.handleError(e)) {
+                        if (e && e.error && e.error.error_summary && e.error.error_summary.includes('path/not_found')) {
+                            // Folder didn't exist in Dropbox yet, which is fine
+                        } else if (!this.handleError(e)) {
                             console.error('Delete from Dropbox failed', e);
                         }
                     }
@@ -1789,6 +1897,11 @@
             async startApp() {
                 document.getElementById('login-overlay').style.display = 'none';
 
+                let shareId = null;
+                if (window.location.hash.startsWith('#share=')) {
+                    shareId = window.location.hash.split('=')[1];
+                }
+
                 // Check URL for auth redirect
                 if (window.location.hash.includes('access_token')) {
                     this.state.providerName = 'dropbox';
@@ -1799,6 +1912,21 @@
                 await this.switchProvider(this.state.providerName, false);
                 this.setupEventListeners();
                 console.log('NFM Dashboard Initialized');
+
+                if (shareId) {
+                    const item = this.state.items.find(i => i.id === shareId);
+                    if (item) {
+                        if (item.type === 'folder') {
+                            this.navigateTo(item.id);
+                        } else {
+                            if (item.parentId && item.parentId !== 'root') this.navigateTo(item.parentId);
+                            this.handleItemClick(item);
+                        }
+                    } else {
+                        this.showToast('找不到分享的項目');
+                    }
+                    window.history.replaceState({}, document.title, window.location.pathname);
+                }
             },
 
             // --- App Lock Logic ---
@@ -1885,7 +2013,7 @@
                     return;
                 }
 
-                this.loadData();
+                await this.loadData();
                 this.updateSettingsUI();
                 if (reload) this.showToast(`已切換至 ${name}`);
                 document.getElementById('settings-modal').style.display = 'none';
@@ -2154,23 +2282,53 @@
                 } else {
                     // File preview
                     if (item.fileData) {
-                        // Local or Base64 cached
-                        const win = window.open();
-                        win.document.write('<iframe src="' + item.fileData + '" frameborder="0" style="border:0; top:0px; left:0px; bottom:0px; right:0px; width:100%; height:100%;" allowfullscreen></iframe>');
+                        this.openPreviewModal(item, item.fileData);
                     } else if (item.dropboxPath && this.state.providerName === 'dropbox') {
-                        this.showToast('正在從 Dropbox 取得連結...');
+                        this.showToast('正在準備預覽...');
                         this.providers.dropbox.dbx.filesGetTemporaryLink({ path: item.dropboxPath })
                             .then(response => {
-                                window.open(response.result.link, '_blank');
+                                this.openPreviewModal(item, response.result.link);
                             })
                             .catch(err => {
                                 console.error(err);
-                                this.showToast('無法開啟檔案');
+                                this.showToast('無法預覽檔案');
                             });
                     } else {
                         this.showToast('無法預覽此檔案');
                     }
                 }
+            },
+
+            openPreviewModal(item, srcUrl) {
+                const modal = document.getElementById('preview-modal');
+                const container = document.getElementById('preview-container');
+                const title = document.getElementById('preview-title');
+                const dlBtn = document.getElementById('preview-download-btn');
+
+                title.innerText = item.name;
+                dlBtn.href = srcUrl;
+                container.innerHTML = '';
+
+                const type = item.fileType || '';
+
+                if (type.startsWith('image/')) {
+                    container.innerHTML = `<img src="${srcUrl}" style="max-width:100%; max-height:100%; object-fit:contain;" />`;
+                    modal.style.display = 'flex';
+                } else if (type.startsWith('video/')) {
+                    container.innerHTML = `<video src="${srcUrl}" controls autoplay style="max-width:100%; max-height:100%; object-fit:contain;"></video>`;
+                    modal.style.display = 'flex';
+                } else if (type === 'application/pdf') {
+                    container.innerHTML = `<iframe src="${srcUrl}" width="100%" height="100%" frameborder="0" style="background:white; border-radius: 8px;"></iframe>`;
+                    modal.style.display = 'flex';
+                } else {
+                    window.open(srcUrl, '_blank');
+                }
+            },
+
+            closePreview() {
+                const modal = document.getElementById('preview-modal');
+                modal.style.display = 'none';
+                document.getElementById('preview-container').innerHTML = ''; // Stop video playback
             },
 
             setViewMode(mode) {
@@ -2237,10 +2395,70 @@
                 }
             },
 
+            showUploadProgress(fileId, fileName) {
+                const container = document.getElementById('upload-progress-container');
+                container.style.display = 'flex';
+
+                const itemHtml = `
+                    <div id="upload-${fileId}" class="upload-item">
+                        <div class="upload-item-header">
+                            <span class="upload-item-name"><i class="fas fa-cloud-upload-alt"></i> ${fileName}</span>
+                            <span id="upload-pct-${fileId}">0%</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div id="upload-bar-${fileId}" class="progress-bar-fill"></div>
+                        </div>
+                    </div>
+                `;
+                container.insertAdjacentHTML('beforeend', itemHtml);
+
+                let pct = 0;
+                const interval = setInterval(() => {
+                    pct += Math.random() * 15;
+                    if (pct > 90) pct = 90;
+                    this.updateUploadProgress(fileId, pct);
+                }, 500);
+
+                return interval;
+            },
+
+            updateUploadProgress(fileId, percent) {
+                const pctEl = document.getElementById(`upload-pct-${fileId}`);
+                const barEl = document.getElementById(`upload-bar-${fileId}`);
+                if (pctEl && barEl) {
+                    pctEl.innerText = Math.floor(percent) + '%';
+                    barEl.style.width = percent + '%';
+                }
+            },
+
+            finishUploadProgress(fileId, timerId) {
+                clearInterval(timerId);
+                this.updateUploadProgress(fileId, 100);
+
+                setTimeout(() => {
+                    const item = document.getElementById(`upload-${fileId}`);
+                    if (item) {
+                        item.style.opacity = '0';
+                        setTimeout(() => {
+                            item.remove();
+                            this.checkHideProgressContainer();
+                        }, 300);
+                    }
+                }, 1000);
+            },
+
+            checkHideProgressContainer() {
+                const container = document.getElementById('upload-progress-container');
+                if (container && container.children.length === 0) {
+                    container.style.display = 'none';
+                }
+            },
+
             handleFileUpload(files) {
                 Array.from(files).forEach(file => {
+                    const fileId = 'file_' + Date.now() + Math.random().toString().substr(2, 5);
                     const fileItem = {
-                        id: 'file_' + Date.now() + Math.random(),
+                        id: fileId,
                         name: file.name,
                         type: 'file',
                         parentId: this.state.currentFolder,
@@ -2249,28 +2467,37 @@
                         createdAt: new Date()
                     };
 
-                    // We need to keep the file object for upload
                     fileItem.fileObj = file;
 
-                    // For local preview immediately if small
-                    const reader = new FileReader();
-                    reader.onload = async (e) => {
-                        // Only cache small files base64 for local storage to avoid quota exceed
-                        if (this.state.providerName === 'local' && file.size < 2000000) {
-                            fileItem.fileData = e.target.result;
-                        }
-
+                    const performUpload = async () => {
+                        const timerId = this.showUploadProgress(fileId, file.name);
                         try {
                             const processedItem = await this.storage.uploadFile(fileItem);
+                            this.finishUploadProgress(fileId, timerId);
+
                             this.state.items.push(processedItem);
                             this.saveData();
                             this.render();
                             this.showToast(`成功上傳 ${file.name}`);
                         } catch (err) {
+                            clearInterval(timerId);
+                            const item = document.getElementById(`upload-${fileId}`);
+                            if (item) item.remove();
+                            this.checkHideProgressContainer();
                             this.showToast(`上傳失敗 ${file.name}`);
                         }
                     };
-                    reader.readAsDataURL(file);
+
+                    if (this.state.providerName === 'local' && file.size < 2000000) {
+                        const reader = new FileReader();
+                        reader.onload = async (e) => {
+                            fileItem.fileData = e.target.result;
+                            await performUpload();
+                        };
+                        reader.readAsDataURL(file);
+                    } else {
+                        performUpload();
+                    }
                 });
             },
 
@@ -2577,10 +2804,28 @@
                 if (confirm('確定要刪除此項目嗎？')) {
                     const itemToDelete = this.state.items.find(i => i.id === this.state.contextId);
                     if (itemToDelete) {
+
+                        // Collect children recursively to delete from state
+                        const getDescendantIds = (parentId) => {
+                            let ids = [];
+                            const children = this.state.items.filter(i => i.parentId === parentId);
+                            for (const c of children) {
+                                ids.push(c.id);
+                                ids = ids.concat(getDescendantIds(c.id));
+                            }
+                            return ids;
+                        };
+                        const toDeleteIds = [itemToDelete.id, ...getDescendantIds(itemToDelete.id)];
+
+                        const toDeleteItems = this.state.items.filter(i => toDeleteIds.includes(i.id));
+
                         if (this.storage.deleteFile) {
-                            await this.storage.deleteFile(itemToDelete);
+                            for (const item of toDeleteItems) {
+                                await this.storage.deleteFile(item);
+                            }
                         }
-                        this.state.items = this.state.items.filter(i => i.id !== this.state.contextId);
+
+                        this.state.items = this.state.items.filter(i => !toDeleteIds.includes(i.id));
                         this.saveData();
                         this.render();
                         this.showToast('已刪除');
