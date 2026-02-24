@@ -670,9 +670,43 @@
         }
 
         /* --- Responsive --- */
+        .mobile-menu-btn {
+            display: none;
+            font-size: 1.5rem;
+            cursor: pointer;
+            margin-right: 15px;
+        }
+
+        #mobile-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: rgba(0, 0, 0, 0.5);
+            backdrop-filter: blur(5px);
+            z-index: 1000;
+        }
+
         @media (max-width: 768px) {
+            .mobile-menu-btn {
+                display: block;
+            }
+
             #sidebar {
-                display: none;
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                width: 280px;
+                z-index: 2000;
+                transform: translateX(-100%);
+                transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            }
+
+            #sidebar.mobile-open {
+                transform: translateX(0);
             }
 
             .search-bar {
@@ -687,6 +721,8 @@
     <div class="bg-shape shape-1"></div>
     <div class="bg-shape shape-2"></div>
     <div class="bg-shape shape-3"></div>
+
+    <div id="mobile-overlay" onclick="app.toggleMobileSidebar()"></div>
 
     <!-- Sidebar -->
     <div id="sidebar" class="glass-panel">
@@ -731,17 +767,21 @@
     <!-- Main Content -->
     <div id="main-content">
         <header>
-            <div class="search-bar">
-                <i class="fas fa-search"></i>
-                <input type="text" id="global-search" placeholder="搜尋檔案、日誌或標籤..." oninput="app.search(this.value)">
-            </div>
-            <div class="user-profile">
-                <!-- Notion style user widget placeholder -->
-                <div
-                    style="width: 35px; height: 35px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center;">
-                    <i class="fas fa-user-circle"></i>
+            <div style="display: flex; align-items: center; width: 100%;">
+                <div class="mobile-menu-btn" onclick="app.toggleMobileSidebar()">
+                    <i class="fas fa-bars"></i>
                 </div>
-            </div>
+                <div class="search-bar" style="flex: 1;">
+                    <i class="fas fa-search"></i>
+                    <input type="text" id="global-search" placeholder="搜尋檔案、日誌或標籤..." oninput="app.search(this.value)">
+                </div>
+                <div class="user-profile">
+                    <!-- Notion style user widget placeholder -->
+                    <div
+                        style="width: 35px; height: 35px; border-radius: 50%; background: var(--primary); display: flex; align-items: center; justify-content: center; margin-left: 15px;">
+                        <i class="fas fa-user-circle"></i>
+                    </div>
+                </div>
         </header>
 
         <div class="breadcrumbs" id="breadcrumbs">
@@ -2553,6 +2593,10 @@
                 const homeNode = Array.from(document.querySelectorAll('.tree-item')).find(el => el.innerText.includes('檔案總管') && !el.closest('#folder-tree'));
                 if (homeNode) homeNode.classList.add('active');
 
+                if (window.innerWidth <= 768) {
+                    this.toggleMobileSidebar(false);
+                }
+
                 this.render();
             },
 
@@ -2581,7 +2625,24 @@
                 const targetNode = Array.from(document.querySelectorAll('.tree-item')).find(el => el.innerText.includes(targetText));
                 if (targetNode) targetNode.classList.add('active');
 
+                if (window.innerWidth <= 768) {
+                    this.toggleMobileSidebar(false);
+                }
+
                 this.render();
+            },
+
+            toggleMobileSidebar(forceState) {
+                const sidebar = document.getElementById('sidebar');
+                const overlay = document.getElementById('mobile-overlay');
+
+                if (forceState === false || sidebar.classList.contains('mobile-open')) {
+                    sidebar.classList.remove('mobile-open');
+                    overlay.style.display = 'none';
+                } else if (forceState === true || !sidebar.classList.contains('mobile-open')) {
+                    sidebar.classList.add('mobile-open');
+                    overlay.style.display = 'block';
+                }
             },
 
             async handleItemClick(item) {
