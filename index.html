@@ -3091,7 +3091,9 @@
 
                 window.addEventListener('dragover', (e) => {
                     e.preventDefault();
-                    dropZone.style.display = 'flex';
+                    if (e.dataTransfer.types && Array.from(e.dataTransfer.types).includes('Files')) {
+                        dropZone.style.display = 'flex';
+                    }
                 });
 
                 dropZone.addEventListener('dragleave', () => {
