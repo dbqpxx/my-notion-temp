@@ -2215,7 +2215,7 @@
                     card.draggable = true;
                     card.ondragstart = (e) => {
                         e.dataTransfer.setData('text/plain', item.id);
-                        e.stopPropagation();
+                        // Removed e.stopPropagation() causing drag failures
                     };
 
                     if (item.type === 'folder') {
