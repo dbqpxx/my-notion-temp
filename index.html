@@ -29,6 +29,24 @@
             --folder-pink: #ff80ab;
             --folder-cyan: #80deea;
             --folder-gray: #b0bec5;
+
+            /* Blob Colors (Dark Mode Default) */
+            --blob-1: rgba(255, 118, 118, 0.4);
+            --blob-2: rgba(102, 126, 234, 0.4);
+            --blob-3: rgba(167, 119, 227, 0.3);
+        }
+
+        [data-theme="light"] {
+            --text-color: #333333;
+            --bg-gradient: linear-gradient(135deg, #e0c3fc 0%, #8ec5fc 100%);
+            --glass-bg: rgba(255, 255, 255, 0.4);
+            --glass-border: rgba(255, 255, 255, 0.5);
+            --glass-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.1);
+
+            /* Blob Colors (Light Mode) */
+            --blob-1: rgba(255, 154, 158, 0.6);
+            --blob-2: rgba(161, 196, 253, 0.6);
+            --blob-3: rgba(194, 233, 251, 0.5);
         }
 
         * {
@@ -46,6 +64,59 @@
             overflow: hidden;
             display: flex;
             color: var(--text-color);
+        }
+
+        /* --- Decorative Background Shapes --- */
+        .bg-shape {
+            position: absolute;
+            border-radius: 50%;
+            filter: blur(80px);
+            z-index: -1;
+            opacity: 0.6;
+            animation: float 20s infinite alternate ease-in-out;
+        }
+
+        .shape-1 {
+            width: 400px;
+            height: 400px;
+            background: var(--blob-1);
+            top: -100px;
+            left: -100px;
+            animation-delay: 0s;
+        }
+
+        .shape-2 {
+            width: 500px;
+            height: 500px;
+            background: var(--blob-2);
+            bottom: -150px;
+            right: -100px;
+            animation-duration: 25s;
+        }
+
+        .shape-3 {
+            width: 300px;
+            height: 300px;
+            background: var(--blob-3);
+            top: 40%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            animation-duration: 30s;
+            animation-direction: alternate-reverse;
+        }
+
+        @keyframes float {
+            0% {
+                transform: translate(0, 0) rotate(0deg) scale(1);
+            }
+
+            50% {
+                transform: translate(50px, 30px) rotate(180deg) scale(1.1);
+            }
+
+            100% {
+                transform: translate(-30px, 50px) rotate(360deg) scale(0.9);
+            }
         }
 
         /* --- Glassmorphism UI Components --- */
@@ -584,6 +655,10 @@
 </head>
 
 <body oncontextmenu="return app.handleGlobalContextMenu(event)">
+    <!-- Decorative Background Shapes -->
+    <div class="bg-shape shape-1"></div>
+    <div class="bg-shape shape-2"></div>
+    <div class="bg-shape shape-3"></div>
 
     <!-- Sidebar -->
     <div id="sidebar" class="glass-panel">
@@ -2400,6 +2475,20 @@
                 if (homeNode) homeNode.classList.add('active');
 
                 this.render();
+            },
+
+            toggleTheme() {
+                this.state.theme = this.state.theme === 'dark' ? 'light' : 'dark';
+                document.documentElement.setAttribute('data-theme', this.state.theme);
+                this.saveData(); // Persist theme preference if possible
+
+                // Update icon if needed
+                const themeBtn = Array.from(document.querySelectorAll('.tree-item')).find(el => el.innerText.includes('模式'));
+                if (themeBtn) {
+                    themeBtn.innerHTML = this.state.theme === 'dark'
+                        ? '<i class="fas fa-moon"></i> 深色模式'
+                        : '<i class="fas fa-sun"></i> 淺色模式';
+                }
             },
 
             filterBy(viewType) {
