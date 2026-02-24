@@ -162,6 +162,10 @@
 
         .nav-section {
             margin-bottom: 20px;
+            display: flex;
+            flex-direction: column;
+            overflow: hidden;
+            /* For scrolling */
         }
 
         .nav-title {
@@ -190,6 +194,30 @@
         .tree-item.active {
             background: var(--primary);
             box-shadow: 0 4px 15px rgba(110, 142, 251, 0.4);
+        }
+
+        #folder-tree {
+            overflow-y: auto;
+            flex: 1;
+            padding-right: 5px;
+        }
+
+        /* Custom Scrollbar for Folder Tree */
+        #folder-tree::-webkit-scrollbar {
+            width: 4px;
+        }
+
+        #folder-tree::-webkit-scrollbar-track {
+            background: transparent;
+        }
+
+        #folder-tree::-webkit-scrollbar-thumb {
+            background: rgba(255, 255, 255, 0.2);
+            border-radius: 4px;
+        }
+
+        #folder-tree::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 255, 255, 0.4);
         }
 
         /* --- Main Content --- */
@@ -2045,7 +2073,8 @@
                 contextId: null,
                 searchQuery: '',
                 providerName: 'local',
-                moveTargetFolderId: null
+                moveTargetFolderId: null,
+                expandedFolders: new Set()
             },
 
             storage: null,
@@ -2404,29 +2433,72 @@
                 container.innerHTML = '';
 
                 const folders = this.state.items.filter(i => i.type === 'folder' && i.id !== 'root');
-                folders.forEach(f => {
-                    const div = document.createElement('div');
-                    div.className = `tree-item ${this.state.currentFolder === f.id ? 'active' : ''}`;
-                    div.innerHTML = `<i class="fas fa-folder" style="color: var(--folder-${f.color})"></i> ${f.name}`;
-                    div.onclick = () => this.navigateTo(f.id);
 
-                    div.ondragover = (e) => {
-                        e.preventDefault();
-                        div.style.background = 'rgba(255, 255, 255, 0.2)';
-                    };
-                    div.ondragleave = (e) => {
-                        div.style.background = '';
-                    };
-                    div.ondrop = (e) => {
-                        e.preventDefault();
-                        div.style.background = '';
-                        const draggedId = e.dataTransfer.getData('text/plain');
-                        app.handleMoveItem(draggedId, f.id);
-                        e.stopPropagation();
-                    };
+                const renderNode = (parentId, depth) => {
+                    const children = folders.filter(f => f.parentId === parentId || (!f.parentId && parentId === 'root'));
+                    children.sort((a, b) => a.name.localeCompare(b.name));
 
-                    container.appendChild(div);
-                });
+                    children.forEach(f => {
+                        const hasChildren = folders.some(child => child.parentId === f.id);
+                        const isExpanded = this.state.expandedFolders.has(f.id);
+
+                        const div = document.createElement('div');
+                        div.className = `tree-item ${this.state.currentFolder === f.id ? 'active' : ''}`;
+                        div.style.paddingLeft = `${12 + (depth * 18)}px`; // Increase left padding based on depth
+
+                        let toggleIconHtml = `<span style="width: 24px; display: inline-block;"></span>`;
+                        if (hasChildren) {
+                            toggleIconHtml = `<span class="folder-toggle" onclick="app.toggleFolderTree('${f.id}', event)" style="width: 24px; display: flex; justify-content: center; align-items: center; cursor: pointer; height: 100%;">
+                                <i class="fas ${isExpanded ? 'fa-chevron-down' : 'fa-chevron-right'}" style="font-size: 0.8em; opacity: 0.7;"></i>
+                            </span>`;
+                        }
+
+                        div.innerHTML = `
+                            ${toggleIconHtml}
+                            <i class="fas fa-folder" style="color: var(--folder-${f.color || 'blue'})"></i> 
+                            <span style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; flex: 1;">${f.name}</span>
+                        `;
+
+                        div.onclick = (e) => {
+                            if (!e.target.closest('.folder-toggle')) {
+                                this.navigateTo(f.id);
+                            }
+                        };
+
+                        div.ondragover = (e) => {
+                            e.preventDefault();
+                            div.style.background = 'rgba(255, 255, 255, 0.2)';
+                        };
+                        div.ondragleave = (e) => {
+                            div.style.background = '';
+                        };
+                        div.ondrop = (e) => {
+                            e.preventDefault();
+                            div.style.background = '';
+                            const draggedId = e.dataTransfer.getData('text/plain');
+                            app.handleMoveItem(draggedId, f.id);
+                            e.stopPropagation();
+                        };
+
+                        container.appendChild(div);
+
+                        if (isExpanded && hasChildren) {
+                            renderNode(f.id, depth + 1);
+                        }
+                    });
+                };
+
+                renderNode('root', 0);
+            },
+
+            toggleFolderTree(folderId, event) {
+                if (event) event.stopPropagation();
+                if (this.state.expandedFolders.has(folderId)) {
+                    this.state.expandedFolders.delete(folderId);
+                } else {
+                    this.state.expandedFolders.add(folderId);
+                }
+                this.renderFolderTree();
             },
 
             // --- Handlers ---
@@ -2468,6 +2540,13 @@
                 this.state.currentView = 'files';
                 this.state.searchQuery = '';
                 document.getElementById('global-search').value = '';
+
+                // Auto-expand parent folders in the sidebar tree
+                let currentItem = this.state.items.find(i => i.id === folderId);
+                while (currentItem && currentItem.parentId && currentItem.parentId !== 'root') {
+                    this.state.expandedFolders.add(currentItem.parentId);
+                    currentItem = this.state.items.find(i => i.id === currentItem.parentId);
+                }
 
                 // Update active state in sidebar
                 document.querySelectorAll('.tree-item').forEach(el => el.classList.remove('active'));
